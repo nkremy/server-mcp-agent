@@ -27,13 +27,16 @@ function log(niveau, contexte, message, data = null) {
 
 // ─────────────────────────────────────────────────────────────
 // Configuration Redis pour BullMQ
+// Priorité : REDIS_URL (Railway) → REDIS_HOST/PORT (local)
 // ─────────────────────────────────────────────────────────────
-const connexionRedis = {
-  connection: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379')
-  }
-}
+const connexionRedis = process.env.REDIS_URL
+  ? { connection: { url: process.env.REDIS_URL } }
+  : {
+      connection: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '6379')
+      }
+    }
 
 // ─────────────────────────────────────────────────────────────
 // telechargerMedia — télécharge un média depuis Meta API
@@ -192,18 +195,17 @@ async function traiterJob(job) {
 
 // ─────────────────────────────────────────────────────────────
 // Démarrage du worker
-// concurrency: 1 → un seul job traité à la fois globalement
-// Chaque phone a sa propre file → pas de blocage entre clients
+// concurrency: 5 → 5 clients traités en parallèle maximum
 // ─────────────────────────────────────────────────────────────
 log('INFO', 'WORKER', '=== Démarrage du worker WhatsApp ===')
-log('INFO', 'WORKER', `Redis: ${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || 6379}`)
+log('INFO', 'WORKER', `Redis: ${process.env.REDIS_URL ? 'REDIS_URL Railway détectée' : (process.env.REDIS_HOST || 'localhost') + ':' + (process.env.REDIS_PORT || 6379)}`)
 
 const worker = new Worker(
   'messages-whatsapp',
   traiterJob,
   {
     ...connexionRedis,
-    concurrency: 5  // 5 clients traités en parallèle maximum
+    concurrency: 5
   }
 )
 
