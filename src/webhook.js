@@ -20,6 +20,7 @@
 import express from 'express'
 import crypto from 'crypto'
 import { Queue } from 'bullmq'
+
 import 'dotenv/config'
 
 const app  = express()
@@ -47,13 +48,16 @@ function log(niveau, contexte, message, data = null) {
 // ─────────────────────────────────────────────────────────────
 // File BullMQ
 // ─────────────────────────────────────────────────────────────
-const fileMessages = new Queue('messages-whatsapp', {
-  connection: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379')
-  }
-})
+const connexionRedis = process.env.REDIS_URL
+  ? { connection: { url: process.env.REDIS_URL } }
+  : {
+      connection: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '6379')
+      }
+    }
 
+const fileMessages = new Queue('messages-whatsapp', connexionRedis)
 log('INFO', 'WEBHOOK', 'File BullMQ connectée')
 
 // ─────────────────────────────────────────────────────────────
