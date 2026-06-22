@@ -214,7 +214,7 @@ server.registerTool(
     description: `Récupère la liste des produits disponibles dans Dolibarr.
     Utiliser quand le client demande ce qui est disponible ou veut voir le catalogue.
     Paramètres : limit (optionnel, défaut 50).
-    Retourne : { success, produits: [{id, ref, label, description, price_ttc, tva_tx}], total }`,
+    Retourne : { success boolean (true si trouver et false sinon), produits: [{id, ref, label, description, price_ttc, tva_tx}], total }`,
     inputSchema: {
       limit: z.number().optional().describe('Nombre max de produits à retourner, défaut 50')
     }
@@ -243,7 +243,7 @@ server.registerTool(
     IMPORTANT : toujours essayer au moins 3 termes différents (catégorie générique, marque, description).
     Ne jamais conclure qu'un produit est absent après un seul terme.
     Paramètres : termes (string[]) — ex: ['cuisinière', '4 feux', 'ICS4'].
-    Retourne : { found: boolean, produits?: [{id, ref, label, price_ttc}] }`,
+    Retourne : { found: boolean (true si trouver et false sinon), produits?: [{id, ref, label, price_ttc}] }`,
     inputSchema: {
       termes: z.array(z.string()).describe('Liste de termes à rechercher, minimum 3')
     }
@@ -270,7 +270,7 @@ server.registerTool(
     description: `Vérifie le stock réel d'un produit dans Dolibarr.
     Utiliser après chercherProduit pour vérifier la disponibilité.
     Paramètres : id (number) — id Dolibarr du produit.
-    Retourne : { success, stock_reel: number, stock_theorique: number }`,
+    Retourne : { success boolean (true si trouver et false sinon), stock_reel: number, stock_theorique: number }`,
     inputSchema: {
       id: z.number().describe('ID Dolibarr du produit')
     }
@@ -287,7 +287,7 @@ server.registerTool(
 // Outil : getImagesProduit
 // Quand l'utiliser : client demande à voir les photos d'un produit
 // Paramètres : ref — référence Dolibarr du produit ex: "PROD001"
-// Retourne : { success, images: [{filename, original_file, content_type}] }
+// Retourne : { success boolean (true si trouver et false sinon), images: [{filename, original_file, content_type}] }
 //            original_file est le chemin à passer à telechargerImage
 // ─────────────────────────────────────────────────────────────
 server.registerTool(
