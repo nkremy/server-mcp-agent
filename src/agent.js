@@ -50,8 +50,6 @@ RÈGLES MÉTIER :
 - Au début de chaque conversation, charge le profil du client avec getProfilClient
 - Si le client n'a pas de dolibarr_id dans son profil, cherche d'abord avec chercherClientParId si dolibarr_id connu, sinon chercherClientParTelephone
 - Si introuvable dans Dolibarr : créer avec creerClient puis sauvegarder le dolibarr_id avec sauvegarderProfil
-- Sauvegarde chaque message avec sauvegarderMessage (role user ET role model)
-- Si sauvegarderMessage retourne nb_messages >= 32, appelle resumerHistorique immédiatement
 
 RÈGLES DE RECHERCHE PRODUIT :
 - Quand un client mentionne ou envoie une image d'un produit, tente MINIMUM 3 termes différents avec chercherProduit
@@ -155,6 +153,23 @@ function construireResume(message) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// convertirOutilsMCPversGemini — prend les outils au serveur mcp et les met au format gemini
+// ─────────────────────────────────────────────────────────────
+
+function convertirOutilsMCPversGemini(tools) {
+  return tools.map(outil => ({
+    name: outil.name,
+    description: outil.description,
+    parameters: {
+      type: outil.inputSchema.type,
+      properties: outil.inputSchema.properties,
+      required: outil.inputSchema.required ?? []
+    }
+  }))
+}
+
+
+// ─────────────────────────────────────────────────────────────
 // traiterMessage — fonction principale exportée
 //
 // Paramètres :
@@ -174,6 +189,12 @@ export async function traiterMessage({ phone, message }) {
   try {
     // ── 1. Connexion MCP ──────────────────────────────────────
     mcpClient = await creerClientMCP(phone)
+
+    //--- CHARGEMET DES OUTILS -----------------------------------
+    let {tools}  = await mcpClient.listTools();
+    let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique'].includes(item.name));
+    let outils = [{functionDeclarations : convertirOutilsMCPversGemini(utils)}]
+
 
     // ── 2. Chargement profil ──────────────────────────────────
     log('INFO', 'AGENT', `Chargement profil pour ${phone}`)
@@ -264,7 +285,10 @@ export async function traiterMessage({ phone, message }) {
         reponse = await ai.models.generateContent({
           model: process.env.GEMINI_MODEL,
           contents,
-          config: { systemInstruction: SYSTEM_PROMPT }
+          config: { 
+            systemInstruction: SYSTEM_PROMPT ,
+            tools : outils
+          }
         })
       } catch (err) {
         log('ERROR', 'GEMINI', `Erreur appel Gemini tour ${tourBoucle}`, err.message)
