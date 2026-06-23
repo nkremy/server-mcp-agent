@@ -11,6 +11,7 @@ import { Worker } from 'bullmq'
 import axios from 'axios'
 import { traiterMessage } from './agent.js'
 import 'dotenv/config'
+import { markRead } from './utils/utils.js'
 
 // ─────────────────────────────────────────────────────────────
 // Logger
@@ -125,8 +126,10 @@ async function envoyerReponse(phone, texte) {
 //   type='audio' → mediaId = id Meta, mimeType
 // ─────────────────────────────────────────────────────────────
 async function traiterJob(job) {
-  const { phone, type, content, mediaId, mimeType, texte } = job.data
+  const { phone, type, content, mediaId, mimeType, texte,defaultName,id_message } = job.data
   log('INFO', 'WORKER', `=== Job reçu [${job.id}] — phone: ${phone} type: ${type} ===`)
+
+  await markRead({id_message});
 
   let message
 
@@ -166,7 +169,7 @@ async function traiterJob(job) {
 
     // ── Appel agent ───────────────────────────────────────────
     log('INFO', 'WORKER', `Appel agent pour ${phone}`)
-    const { texte: reponse } = await traiterMessage({ phone, message })
+    const { texte: reponse } = await traiterMessage({ phone, message,defaultName})
     log('INFO', 'WORKER', `Réponse agent obtenue — ${reponse?.length} caractères`)
 
     // ── Envoi WhatsApp ────────────────────────────────────────

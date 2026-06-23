@@ -98,6 +98,7 @@ function extraireMessage(body) {
   const entry   = body?.entry?.[0]
   const changes = entry?.changes?.[0]
   const value   = changes?.value
+//   const defaultName = value.contacts[0]?.profile?.name || "client_"+phone; 
 
   // On ne traite que les vrais messages entrants
   if (!value?.messages?.[0]) {
@@ -214,6 +215,9 @@ app.post('/webhook', async (req, res) => {
     // ── Extraction du message ─────────────────────────────────
     const jobData = extraireMessage(body)
     if (!jobData) return
+    //--- ajouter du nom fourni pas whatsapp et du messageid dans le payload du job
+    jobData.id_message = body.entry[0].changes[0].value.messages[0].id;
+    jobData.defaultName = body.entry[0].changes[0].value.contacts[0].profile.name || `client_${jobData.phone}`;
 
     // ── Ajout dans BullMQ ─────────────────────────────────────
     const job = await fileMessages.add(

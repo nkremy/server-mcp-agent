@@ -127,6 +127,7 @@ export async function consulterStock({ id }) {
 
     return {
       success: true,
+      id_produit:id,//ajouter de l'identifiand du produit que l'on recherche le stock ajouter pour eviter les confisions.Indispensable quand le LLM demande les stocks d'aumois 2 produits simultament 
       stock_reel: data.stock_reel ?? 0,
       stock_theorique: data.stock_theorique ?? 0
     }
