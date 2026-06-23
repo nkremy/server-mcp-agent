@@ -28,15 +28,7 @@ export async function markRead({id_message}){
                 id_message
             }
         )
-    }).then(re=>{
-        console.log(`\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++`);
-        console.log(`\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++`);
-        console.log(`\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++`);
-      let reponse = await re.json();
-        console.log(`${reponse}`);
-      
-      )
-      .catch(error=>{
+    }).catch(error=>{
         console.log(`[INFO] [error] echec message marquer comme lu `);
         return
     })
