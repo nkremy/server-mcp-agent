@@ -225,7 +225,7 @@ export async function traiterMessage({ phone, message , defaultName}) {
 
     //--- CHARGEMET DES OUTILS -----------------------------------
     let {tools}  = await mcpClient.listTools();
-    let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique'].includes(item.name));
+    let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage'].includes(item.name));
     let outils = [{functionDeclarations : convertirOutilsMCPversGemini(utils)}]
 
 
