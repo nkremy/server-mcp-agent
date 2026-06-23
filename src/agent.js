@@ -36,7 +36,7 @@ function log(niveau, contexte, message, data = null) {
 // ─────────────────────────────────────────────────────────────
 // SYSTEM PROMPT
 // ─────────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `Tu es un assistant commercial WhatsApp pour une boutique.
+let SYSTEM_PROMPT = `Tu es un assistant commercial WhatsApp pour une boutique.
 Tu aides les clients à découvrir les produits, vérifier les stocks et passer des commandes.
 
 RÈGLES DE COMMUNICATION :
@@ -47,9 +47,10 @@ RÈGLES DE COMMUNICATION :
 - Si le client écrit en anglais, réponds en anglais
 
 RÈGLES MÉTIER :
-- Au début de chaque conversation, charge le profil du client avec getProfilClient
-- Si le client n'a pas de dolibarr_id dans son profil, cherche d'abord avec chercherClientParId si dolibarr_id connu, sinon chercherClientParTelephone
+- Si le profil client n'a pas de dolibarr_id dans son profil, utilise chercherClientParTelephone si tu ne trouve rien alors le client n'est pas encore enregistrer dans Dolibarr 
 - Si introuvable dans Dolibarr : créer avec creerClient puis sauvegarder le dolibarr_id avec sauvegarderProfil
+-n'invente jamais une information dans tes operations
+
 
 RÈGLES DE RECHERCHE PRODUIT :
 - Quand un client mentionne ou envoie une image d'un produit, tente MINIMUM 3 termes différents avec chercherProduit
@@ -181,7 +182,7 @@ function convertirOutilsMCPversGemini(tools) {
 //
 // Retourne : { texte: string }
 // ─────────────────────────────────────────────────────────────
-export async function traiterMessage({ phone, message }) {
+export async function traiterMessage({ phone, message , defaultName}) {
   log('INFO', 'AGENT', `=== Début traitement message pour ${phone} ===`)
 
   let mcpClient = null
@@ -211,6 +212,16 @@ export async function traiterMessage({ phone, message }) {
         nb_messages: profilData.profil.nb_messages
       })
     }
+
+    // ####
+    //-- Ajouter des informations indispensable dans le systeme prompt (telephone,nom)
+    SYSTEM_PROMPT +=`
+        information important sur la conversation actuel : 
+            telephone (phone) du client : ${phone}
+            nom par defaut : ${defaultName} a utiliser quand une action necessite le nom du client mais que le nom n'est pas dans le profilclient (name=""ou null), 
+                si lorsque tu utilise l'outil getProfilClient et tu recoi un name=""ou null met le profil ajouter avec le nom par defaut
+
+    `
 
     // ── 3. Chargement historique ──────────────────────────────
     log('INFO', 'AGENT', `Chargement historique pour ${phone}`)

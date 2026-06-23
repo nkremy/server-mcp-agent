@@ -20,7 +20,6 @@
 import express from 'express'
 import crypto from 'crypto'
 import { Queue } from 'bullmq'
-
 import 'dotenv/config'
 
 const app  = express()
@@ -48,16 +47,13 @@ function log(niveau, contexte, message, data = null) {
 // ─────────────────────────────────────────────────────────────
 // File BullMQ
 // ─────────────────────────────────────────────────────────────
-const connexionRedis = process.env.REDIS_URL
-  ? { connection: { url: process.env.REDIS_URL } }
-  : {
-      connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379')
-      }
-    }
+const fileMessages = new Queue('messages-whatsapp', {
+  connection: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379')
+  }
+})
 
-const fileMessages = new Queue('messages-whatsapp', connexionRedis)
 log('INFO', 'WEBHOOK', 'File BullMQ connectée')
 
 // ─────────────────────────────────────────────────────────────
@@ -108,6 +104,7 @@ function extraireMessage(body) {
   const message  = value.messages[0]
   const phone    = message.from   // numéro WhatsApp du client
   const type     = message.type   // 'text', 'image', 'audio', etc.
+  const defaultName = value.contacts[0]?.profile?.name || "client_"+phone; //represente le nom pas defaut attribuer a un client
 
   log('INFO', 'WEBHOOK', `Message entrant — phone: ${phone} type: ${type}`)
 
@@ -118,7 +115,7 @@ function extraireMessage(body) {
       return null
     }
     log('INFO', 'WEBHOOK', `Texte reçu de ${phone} : ${content.substring(0, 80)}`)
-    return { phone, type: 'text', content }
+    return { phone, type: 'text', content ,defaultName}
   }
 
   if (type === 'image') {
@@ -130,7 +127,7 @@ function extraireMessage(body) {
       return null
     }
     log('INFO', 'WEBHOOK', `Image reçue de ${phone} — mediaId: ${mediaId} caption: ${texte.substring(0, 40)}`)
-    return { phone, type: 'image', mediaId, mimeType, texte }
+    return { phone, type: 'image', mediaId, mimeType, texte ,defaultName}
   }
 
   if (type === 'audio') {
@@ -141,7 +138,7 @@ function extraireMessage(body) {
       return null
     }
     log('INFO', 'WEBHOOK', `Audio reçu de ${phone} — mediaId: ${mediaId}`)
-    return { phone, type: 'audio', mediaId, mimeType }
+    return { phone, type: 'audio', mediaId, mimeType ,defaultName }
   }
 
   // Type non géré (document, sticker, location, etc.)
@@ -215,6 +212,9 @@ app.post('/webhook', async (req, res) => {
     const jobData = extraireMessage(body)
     if (!jobData) return
 
+    //####
+    //----- ajouter de l'indentefiand du message dans le payload indispensable pour afficher l'indicateur de saisi et marque les messages comme lu
+    jobData.message_id = body.entry[0].changes[0].value.messages[0].id;
     // ── Ajout dans BullMQ ─────────────────────────────────────
     const job = await fileMessages.add(
       `msg-${jobData.phone}-${Date.now()}`,

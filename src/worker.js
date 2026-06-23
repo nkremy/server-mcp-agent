@@ -11,6 +11,7 @@ import { Worker } from 'bullmq'
 import axios from 'axios'
 import { traiterMessage } from './agent.js'
 import 'dotenv/config'
+import { markRead } from './utils/utils.js'
 
 // ─────────────────────────────────────────────────────────────
 // Logger
@@ -27,16 +28,13 @@ function log(niveau, contexte, message, data = null) {
 
 // ─────────────────────────────────────────────────────────────
 // Configuration Redis pour BullMQ
-// Priorité : REDIS_URL (Railway) → REDIS_HOST/PORT (local)
 // ─────────────────────────────────────────────────────────────
-const connexionRedis = process.env.REDIS_URL
-  ? { connection: { url: process.env.REDIS_URL } }
-  : {
-      connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379')
-      }
-    }
+const connexionRedis = {
+  connection: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379')
+  }
+}
 
 // ─────────────────────────────────────────────────────────────
 // telechargerMedia — télécharge un média depuis Meta API
@@ -125,9 +123,10 @@ async function envoyerReponse(phone, texte) {
 //   type='audio' → mediaId = id Meta, mimeType
 // ─────────────────────────────────────────────────────────────
 async function traiterJob(job) {
-  const { phone, type, content, mediaId, mimeType, texte } = job.data
-  log('INFO', 'WORKER', `=== Job reçu [${job.id}] — phone: ${phone} type: ${type} ===`)
-
+    const { phone, type, content, mediaId, mimeType, texte,defaultName,message_id } = job.data
+    log('INFO', 'WORKER', `=== Job reçu [${job.id}] — phone: ${phone} type: ${type} ===`)
+    
+    await markRead({message_id});
   let message
 
   try {
@@ -166,7 +165,7 @@ async function traiterJob(job) {
 
     // ── Appel agent ───────────────────────────────────────────
     log('INFO', 'WORKER', `Appel agent pour ${phone}`)
-    const { texte: reponse } = await traiterMessage({ phone, message })
+    const { texte: reponse } = await traiterMessage({ phone, message , defaultName })
     log('INFO', 'WORKER', `Réponse agent obtenue — ${reponse?.length} caractères`)
 
     // ── Envoi WhatsApp ────────────────────────────────────────
@@ -195,17 +194,18 @@ async function traiterJob(job) {
 
 // ─────────────────────────────────────────────────────────────
 // Démarrage du worker
-// concurrency: 5 → 5 clients traités en parallèle maximum
+// concurrency: 1 → un seul job traité à la fois globalement
+// Chaque phone a sa propre file → pas de blocage entre clients
 // ─────────────────────────────────────────────────────────────
 log('INFO', 'WORKER', '=== Démarrage du worker WhatsApp ===')
-log('INFO', 'WORKER', `Redis: ${process.env.REDIS_URL ? 'REDIS_URL Railway détectée' : (process.env.REDIS_HOST || 'localhost') + ':' + (process.env.REDIS_PORT || 6379)}`)
+log('INFO', 'WORKER', `Redis: ${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || 6379}`)
 
 const worker = new Worker(
   'messages-whatsapp',
   traiterJob,
   {
     ...connexionRedis,
-    concurrency: 5
+    concurrency: 5  // 5 clients traités en parallèle maximum
   }
 )
 
