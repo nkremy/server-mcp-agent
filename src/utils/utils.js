@@ -8,7 +8,14 @@ const headers = {
 
 
 export async function markRead({id_message}){
-    fetch(url,{
+  console.log(`*****************************************************************${id_message}`)
+  console.log(`*****************************************************************${id_message}`)
+  console.log(`*****************************************************************${id_message}`)
+  console.log(`*****************************************************************${id_message}`)
+  console.log(`*****************************************************************${id_message}`)
+  console.log(`*****************************************************************${id_message}`)
+  console.log(`*****************************************************************${id_message}`)
+    await fetch(url,{
         method : "POST",
         headers,
         body : JSON.stringify(
@@ -21,7 +28,14 @@ export async function markRead({id_message}){
                 id_message
             }
         )
-    }).catch(error=>{
+    }).then(re=>{
+        console.log(`\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++`);
+        console.log(`\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++`);
+        console.log(`\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++`);
+        console.log(`${await re.json()}`);
+      
+      )
+      .catch(error=>{
         console.log(`[INFO] [error] echec message marquer comme lu `);
         return
     })
