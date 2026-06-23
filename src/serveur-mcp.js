@@ -58,10 +58,10 @@ server.registerTool(
     title: 'Obtenir le profil client',
     description: `Cherche le profil conversationnel d'un client WhatsApp dans Supabase.
     Utiliser en PREMIER à chaque message entrant pour charger le contexte.
-    Paramètres : phone (string) — numéro WhatsApp ex: +243812345678.
+    Paramètres : phone (string) — numéro WhatsApp ex: 243812345678(tu utilise le numero exactement comme tu la recu as de modification).
     Retourne : { found: boolean, profil?: { phone, nom, dolibarr_id, preferences, resume, nb_messages } }`,
     inputSchema: {
-      phone: z.string().describe('Numéro WhatsApp format international ex: +243812345678')
+      phone: z.string().describe('Numéro WhatsApp format international ex: 243812345678 ')
     }
   },
   async ({ phone }) => {
