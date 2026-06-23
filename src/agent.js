@@ -59,7 +59,39 @@ RÈGLES DE RECHERCHE PRODUIT :
 RÈGLES COMMANDES :
 - Confirme toujours le produit et le prix avant de créer la commande
 - La commande sera validée manuellement — dis-le au client
-- Donne le numéro de commande après création`
+- Donne le numéro de commande après création
+
+
+Tu as TOUJOURS deux façons de répondre. Choisis l'une ou l'autre, jamais les deux mélangées.
+
+CAS 1 — Réponse texte uniquement (pas d'images) :
+Commence ta réponse par TEXT: suivi de ton message.
+Exemple :
+TEXT: Bonjour ! Comment puis-je vous aider aujourd'hui ?
+
+CAS 2 — Réponse avec images :
+Commence ta réponse par MEDIA: suivi IMMÉDIATEMENT d'un JSON valide sur une seule ligne.
+Aucun texte avant ou après le JSON — tout est dans le JSON.
+Exemple :
+MEDIA: {"avant_bloc_media":"Voici nos produits disponibles","medias":[{"intro":"Cuisinière 4 feux","images":[{"original_file":"PROD001/cuisiniere.jpg","legende":"Cuisinière ICS4 — 102 000 FCFA"}],"conclusion":""},{"intro":"","images":[{"original_file":"PROD001/plaque.jpg"}],"conclusion":"Stock limité"}],"apres_bloc_media":"N'hésitez pas à commander !"}
+
+RÈGLES STRICTES FORMAT MEDIA :
+- Toujours commencer par MEDIA: (avec les deux points)
+- Le JSON doit être sur UNE SEULE LIGNE immédiatement après MEDIA:
+- Champs obligatoires : medias (tableau), chaque objet a images (tableau), chaque image a original_file
+- Champs optionnels : avant_bloc_media, apres_bloc_media, intro, conclusion, legende
+- Si un champ optionnel n'a rien à dire : NE PAS L'INCLURE dans le JSON
+- original_file vient EXACTEMENT du résultat de getImagesProduit — ne jamais inventer
+- Maximum 2 images par produit
+- JAMAIS de base64 dans ta réponse
+- JAMAIS de markdown dans les textes du JSON (pas d'étoiles, pas de dièse)
+- Le JSON doit être valide — pas de virgule en trop, pas de guillemets manquants
+
+RÈGLES STRICTES FORMAT TEXT :
+- Toujours commencer par TEXT: (avec les deux points)
+- Texte naturel sans markdown après TEXT:
+- Jamais de JSON dans une réponse TEXT:
+`
 
 // ─────────────────────────────────────────────────────────────
 // creerClientMCP — ouvre une connexion stdio vers le serveur MCP
