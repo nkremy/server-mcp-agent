@@ -86,9 +86,76 @@ async function telechargerMedia(mediaId) {
 //   phone  (string) — numéro destinataire ex: +243812345678
 //   texte  (string) — réponse à envoyer
 // ─────────────────────────────────────────────────────────────
-async function envoyerReponse(phone, texte) {
-  log('INFO', 'WHATSAPP', `Envoi réponse à ${phone} — ${texte.length} caractères`)
+// async function envoyerReponse(phone, texte) {
+//   log('INFO', 'WHATSAPP', `Envoi réponse à ${phone} — ${texte.length} caractères`)
 
+//   try {
+//     await axios.post(
+//       `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+//       {
+//         messaging_product: 'whatsapp',
+//         to: phone,
+//         type: 'text',
+//         text: { body: texte }
+//       },
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+//           'Content-Type': 'application/json'
+//         }
+//       }
+//     )
+//     log('INFO', 'WHATSAPP', `Réponse envoyée à ${phone}`)
+//   } catch (err) {
+//     log('ERROR', 'WHATSAPP', `Échec envoi réponse à ${phone}`, err.message)
+//     if (err.response?.data) {
+//       log('ERROR', 'WHATSAPP', `Détail erreur Meta`, err.response.data)
+//     }
+//     throw err
+//   }
+// }
+
+
+// ─────────────────────────────────────────────────────────────
+// parserReponse — détecte le type de réponse et parse
+//
+// Retourne :
+//   { type: 'text', texte: string }
+//   { type: 'media', data: object }
+// ─────────────────────────────────────────────────────────────
+function parserReponse(reponseTexte) {
+  const reponse = reponseTexte.trim()
+
+  if (reponse.startsWith('TEXT:')) {
+    const texte = reponse.slice(5).trim()
+    log('INFO', 'PARSER', `Type TEXT — ${texte.length} caractères`)
+    return { type: 'text', texte }
+  }
+
+  if (reponse.startsWith('MEDIA:')) {
+    const jsonBrut = reponse.slice(6).trim()
+    try {
+      const data = JSON.parse(jsonBrut)
+      log('INFO', 'PARSER', `Type MEDIA — ${data.medias?.length || 0} groupe(s)`)
+      return { type: 'media', data }
+    } catch (err) {
+      log('ERROR', 'PARSER', `JSON MEDIA invalide — fallback texte`, err.message)
+      log('ERROR', 'PARSER', `JSON brut reçu`, jsonBrut.substring(0, 200))
+      return { type: 'text', texte: jsonBrut }
+    }
+  }
+
+  // Fallback — Gemini n'a pas respecté le format
+  log('WARN', 'PARSER', `Format non reconnu — traité comme texte brut`)
+  return { type: 'text', texte: reponse }
+}
+
+// ─────────────────────────────────────────────────────────────
+// envoyerTexte — envoie un message texte simple
+// ─────────────────────────────────────────────────────────────
+async function envoyerTexte(phone, texte) {
+  if (!texte || !texte.trim()) return
+  log('INFO', 'WHATSAPP', `Envoi texte à ${phone} — ${texte.length} caractères`)
   try {
     await axios.post(
       `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
@@ -96,7 +163,7 @@ async function envoyerReponse(phone, texte) {
         messaging_product: 'whatsapp',
         to: phone,
         type: 'text',
-        text: { body: texte }
+        text: { body: texte.trim() }
       },
       {
         headers: {
@@ -105,14 +172,155 @@ async function envoyerReponse(phone, texte) {
         }
       }
     )
-    log('INFO', 'WHATSAPP', `Réponse envoyée à ${phone}`)
+    log('INFO', 'WHATSAPP', `Texte envoyé à ${phone}`)
   } catch (err) {
-    log('ERROR', 'WHATSAPP', `Échec envoi réponse à ${phone}`, err.message)
-    if (err.response?.data) {
-      log('ERROR', 'WHATSAPP', `Détail erreur Meta`, err.response.data)
-    }
+    log('ERROR', 'WHATSAPP', `Échec envoi texte`, err.message)
+    if (err.response?.data) log('ERROR', 'WHATSAPP', `Détail Meta`, err.response.data)
     throw err
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// uploaderImageMeta — upload base64 vers Meta Media API
+// Retourne : media_id (string)
+// ─────────────────────────────────────────────────────────────
+async function uploaderImageMeta(base64, mimeType) {
+  log('INFO', 'MEDIA', `Upload image vers Meta — mimeType: ${mimeType}`)
+  const buffer = Buffer.from(base64, 'base64')
+  const { default: FormData } = await import('form-data')
+  const form = new FormData()
+  form.append('file', buffer, { filename: 'image.jpg', contentType: mimeType })
+  form.append('type', mimeType)
+  form.append('messaging_product', 'whatsapp')
+
+  try {
+    const reponse = await axios.post(
+      `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/media`,
+      form,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+          ...form.getHeaders()
+        }
+      }
+    )
+    const mediaId = reponse.data.id
+    log('INFO', 'MEDIA', `Image uploadée — media_id: ${mediaId}`)
+    return mediaId
+  } catch (err) {
+    log('ERROR', 'MEDIA', `Échec upload image Meta`, err.message)
+    if (err.response?.data) log('ERROR', 'MEDIA', `Détail Meta`, err.response.data)
+    throw err
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// envoyerImage — télécharge depuis Dolibarr, upload Meta,
+//               envoie à WhatsApp
+// ─────────────────────────────────────────────────────────────
+async function envoyerImage(phone, imageInfo) {
+  log('INFO', 'WHATSAPP', `Traitement image : ${imageInfo.original_file}`)
+  try {
+    // Télécharger depuis Dolibarr
+    const dolibarrReponse = await axios.get(
+      `${process.env.DOLIBARR_URL}/api/index.php/documents/download`,
+      {
+        params: {
+          modulepart: 'product',
+          original_file: imageInfo.original_file
+        },
+        headers: { DOLAPIKEY: process.env.DOLIBARR_API_KEY }
+      }
+    )
+
+    const base64  = dolibarrReponse.data.content
+    const mimeType = dolibarrReponse.data['content-type'] || 'image/jpeg'
+    log('INFO', 'MEDIA', `Image Dolibarr OK — ${dolibarrReponse.data.filesize} octets`)
+
+    // Upload vers Meta
+    const mediaId = await uploaderImageMeta(base64, mimeType)
+
+    // Construire le payload image
+    const imagePayload = { id: mediaId }
+    if (imageInfo.legende && imageInfo.legende.trim()) {
+      imagePayload.caption = imageInfo.legende.trim()
+    }
+
+    // Envoyer via WhatsApp
+    await axios.post(
+      `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: phone,
+        type: 'image',
+        image: imagePayload
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    )
+    log('INFO', 'WHATSAPP', `Image envoyée — ${imageInfo.original_file}`)
+
+  } catch (err) {
+    log('ERROR', 'WHATSAPP', `Échec image ${imageInfo.original_file}`, err.message)
+    // Non bloquant — on continue avec l'image suivante
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// envoyerReponse — point d'entrée principal
+//
+// Parse la réponse de l'agent et envoie texte + images
+// dans le bon ordre selon le format TEXT: ou MEDIA:
+// ─────────────────────────────────────────────────────────────
+async function envoyerReponse(phone, reponseTexte) {
+  log('INFO', 'WHATSAPP', `=== Début envoi réponse à ${phone} ===`)
+
+  const parsed = parserReponse(reponseTexte)
+
+  // ── CAS 1 : Texte simple ──────────────────────────────────
+  if (parsed.type === 'text') {
+    await envoyerTexte(phone, parsed.texte)
+    log('INFO', 'WHATSAPP', `=== Envoi texte terminé ===`)
+    return
+  }
+
+  // ── CAS 2 : Media ─────────────────────────────────────────
+  const { data } = parsed
+
+  // avant_bloc_media
+  if (data.avant_bloc_media?.trim()) {
+    await envoyerTexte(phone, data.avant_bloc_media)
+  }
+
+  // Parcourir chaque bloc media
+  for (const bloc of (data.medias || [])) {
+
+    // intro du bloc
+    if (bloc.intro?.trim()) {
+      await envoyerTexte(phone, bloc.intro)
+    }
+
+    // Images du bloc
+    for (const imageInfo of (bloc.images || [])) {
+      await envoyerImage(phone, imageInfo)
+    }
+
+    // conclusion du bloc
+    if (bloc.conclusion?.trim()) {
+      await envoyerTexte(phone, bloc.conclusion)
+    }
+  }
+
+  // apres_bloc_media
+  if (data.apres_bloc_media?.trim()) {
+    await envoyerTexte(phone, data.apres_bloc_media)
+  }
+
+  log('INFO', 'WHATSAPP', `=== Envoi media terminé pour ${phone} ===`)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -225,3 +433,5 @@ worker.on('error', (err) => {
 })
 
 log('INFO', 'WORKER', `Worker en écoute sur la file 'messages-whatsapp'`)
+
+
