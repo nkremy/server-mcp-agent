@@ -32,7 +32,8 @@ export async function markRead({id_message}){
         console.log(`\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++`);
         console.log(`\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++`);
         console.log(`\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++`);
-        console.log(`${await re.json()}`);
+      let reponse = await re.json();
+        console.log(`${reponse}`);
       
       )
       .catch(error=>{
