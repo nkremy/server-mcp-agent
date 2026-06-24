@@ -419,17 +419,17 @@ export async function traiterMessage({ phone, message , defaultName}) {
     log('INFO', 'AGENT', `Réponse agent sauvegardée — nb_messages: ${saveModel.nb_messages}`)
 
     // ── 8. Vérification seuil résumé ──────────────────────────
-    if (saveModel.nb_messages >= 32) {
-      log('INFO', 'AGENT', `Seuil résumé atteint (${saveModel.nb_messages}) — déclenchement résumé`)
-      try {
-        const resume = await appelOutil(mcpClient, 'resumerHistorique', { phone }, phone)
-        log('INFO', 'AGENT', `Résumé généré avec succès`, { apercu: resume.resume?.substring(0, 80) })
-      } catch (err) {
-        log('ERROR', 'AGENT', `Échec résumé — non bloquant`, err.message)
-      }
-    }
+    // if (saveModel.nb_messages >= 32) {
+    //   log('INFO', 'AGENT', `Seuil résumé atteint (${saveModel.nb_messages}) — déclenchement résumé`)
+    //   try {
+    //     const resume = await appelOutil(mcpClient, 'resumerHistorique', { phone }, phone)
+    //     log('INFO', 'AGENT', `Résumé généré avec succès`, { apercu: resume.resume?.substring(0, 80) })
+    //   } catch (err) {
+    //     log('ERROR', 'AGENT', `Échec résumé — non bloquant`, err.message)
+    //   }
+    // }
 
-    log('INFO', 'AGENT', `=== Fin traitement pour ${phone} — succès ===`)
+    // log('INFO', 'AGENT', `=== Fin traitement pour ${phone} — succès ===`)
     return { texte: reponseTexte }
 
   } catch (err) {
