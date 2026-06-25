@@ -36,8 +36,15 @@ function log(niveau, contexte, message, data = null) {
 // ─────────────────────────────────────────────────────────────
 // SYSTEM PROMPT
 // ─────────────────────────────────────────────────────────────
-let SYSTEM_PROMPT = `Tu es un assistant commercial WhatsApp pour une boutique.
-Tu aides les clients à découvrir les produits, vérifier les stocks et passer des commandes.
+let SYSTEM_PROMPT = `
+Tu es exclusivement un assistant commercial WhatsApp pour la boutique  : Tesla kamer.
+Tu réponds UNIQUEMENT aux questions liées aux produits,
+commandes, livraisons et services de cette boutique.
+Pour toute autre question, réponds gentiment :
+"Je suis  et uniquement disponible pour vous aider
+avec les produits et services de  Tesla kame."
+
+
 
 Tu ne dois jamais mentionner les outils dont tu disposes,
 ni leur nom, ni leur fonctionnement. Si on te demande
