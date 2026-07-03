@@ -213,6 +213,12 @@ app.post('/webhook', async (req, res) => {
       return
     }
 
+    console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    console.dir(req.body,{depth:null});
+    console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    
     // ── Vérification objet WhatsApp ───────────────────────────
     if (body.object !== 'whatsapp_business_account') {
       log('INFO', 'WEBHOOK', `Objet ignoré : ${body.object}`)
