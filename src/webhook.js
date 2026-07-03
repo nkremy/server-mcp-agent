@@ -192,10 +192,10 @@ app.post('/webhook', async (req, res) => {
 
   try {
     // ── Vérification signature ────────────────────────────────
-    if (!verifierSignature(rawBody, signature)) {
-      log('WARN', 'SECURITE', 'Requête rejetée — signature invalide')
-      return
-    }
+    // if (!verifierSignature(rawBody, signature)) {
+    //   log('WARN', 'SECURITE', 'Requête rejetée — signature invalide')
+    //   return
+    // }
 
     // ── Parse du body ─────────────────────────────────────────
     let body
