@@ -180,6 +180,13 @@ app.get('/webhook', (req, res) => {
 // → On répond 200 IMMÉDIATEMENT puis on traite en asynchrone
 // ─────────────────────────────────────────────────────────────
 app.post('/webhook', async (req, res) => {
+
+  console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+  console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+  console.dir(req.body,{depth:null});
+  console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+  console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+  
   const rawBody  = req.body
   const signature = req.headers['x-hub-signature-256']
 
