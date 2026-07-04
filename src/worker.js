@@ -334,7 +334,14 @@ async function envoyerReponse(phone, reponseTexte) {
 //   type='audio' → mediaId = id Meta, mimeType
 // ─────────────────────────────────────────────────────────────
 async function traiterJob(job) {
-  const { phone, type, content, mediaId, mimeType, texte,defaultName,id_message } = job.data
+  const { phone, type, content, mediaId, mimeType, texte,defaultName,id_message  } = job.data
+  
+  // ───────────── AJOUT (étape 2 du plan) ─────────────
+  // Transport du reply capturé au webhook (étape 1). Pas encore utilisé
+  // ici, juste transmis plus loin jusqu'à l'agent.
+  const { repond_a_id_whatsapp } = job.data
+  // ───────────── FIN AJOUT ─────────────
+  
   log('INFO', 'WORKER', `=== Job reçu [${job.id}] — phone: ${phone} type: ${type} ===`)
 
   await markRead({id_message});
@@ -377,7 +384,12 @@ async function traiterJob(job) {
 
     // ── Appel agent ───────────────────────────────────────────
     log('INFO', 'WORKER', `Appel agent pour ${phone}`)
-    const { texte: reponse } = await traiterMessage({ phone, message,defaultName})
+    // ───────────── AJOUT (étape 2 du plan) ─────────────
+    // On fait suivre id_message et repond_a_id_whatsapp jusqu'à l'agent.
+    // agent.js ne les utilise pas encore — ils attendent l'étape 3 (sessions).
+    const { texte: reponse } = await traiterMessage({ phone, message,defaultName, id_message, repond_a_id_whatsapp })
+    // ───────────── FIN AJOUT ─────────────
+    // const { texte: reponse } = await traiterMessage({ phone, message,defaultName,repond_a_id_whatsapp})
     log('INFO', 'WORKER', `Réponse agent obtenue — ${reponse?.length} caractères`)
 
     // ── Envoi WhatsApp ────────────────────────────────────────
