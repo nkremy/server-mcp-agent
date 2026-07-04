@@ -111,6 +111,64 @@ RÈGLES STRICTES FORMAT TEXT :
 - Jamais de JSON dans une réponse TEXT:
 `
 
+// ───────────── AJOUT (étape suivante du plan) ─────────────
+// aplatirReponse — interprète la réponse Gemini (TEXT: ou MEDIA:)
+// et la transforme en tableau plat ordonné, un élément par message
+// WhatsApp distinct à envoyer. Reprend la logique qui était dans
+// parserReponse/envoyerReponse (worker.js), déplacée ici.
+function aplatirReponse(reponseTexte) {
+  const reponse = reponseTexte.trim()
+  const elements = []
+
+  if (reponse.startsWith('TEXT:')) {
+    const texte = reponse.slice(5).trim()
+    if (texte) elements.push({ type: 'text', content: texte })
+    return elements
+  }
+
+  if (reponse.startsWith('MEDIA:')) {
+    const jsonBrut = reponse.slice(6).trim()
+    let data
+    try {
+      data = JSON.parse(jsonBrut)
+    } catch (err) {
+      elements.push({ type: 'text', content: jsonBrut })
+      return elements
+    }
+
+    if (data.avant_bloc_media?.trim()) {
+      elements.push({ type: 'text', content: data.avant_bloc_media.trim() })
+    }
+
+    for (const bloc of (data.medias || [])) {
+      if (bloc.intro?.trim()) {
+        elements.push({ type: 'text', content: bloc.intro.trim() })
+      }
+      for (const imageInfo of (bloc.images || [])) {
+        elements.push({
+          type: 'image',
+          original_file: imageInfo.original_file,
+          legende: imageInfo.legende || ''
+        })
+      }
+      if (bloc.conclusion?.trim()) {
+        elements.push({ type: 'text', content: bloc.conclusion.trim() })
+      }
+    }
+
+    if (data.apres_bloc_media?.trim()) {
+      elements.push({ type: 'text', content: data.apres_bloc_media.trim() })
+    }
+
+    return elements
+  }
+
+  elements.push({ type: 'text', content: reponse })
+  return elements
+}
+// ───────────── FIN AJOUT ─────────────
+
+
 // ─────────────────────────────────────────────────────────────
 // creerClientMCP — ouvre une connexion stdio vers le serveur MCP
 // ─────────────────────────────────────────────────────────────
@@ -232,7 +290,7 @@ function convertirOutilsMCPversGemini(tools) {
 //
 // Retourne : { texte: string }
 // ─────────────────────────────────────────────────────────────
-export async function traiterMessage({ phone, message , defaultName}) {
+export async function traiterMessage({ phone, message , defaultName , id_message, repond_a_id_whatsapp}) {
   log('INFO', 'AGENT', `=== Début traitement message pour ${phone} ===`)
 
   let mcpClient = null
@@ -243,7 +301,8 @@ export async function traiterMessage({ phone, message , defaultName}) {
 
     //--- CHARGEMET DES OUTILS -----------------------------------
     let {tools}  = await mcpClient.listTools();
-    let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage'].includes(item.name));
+    let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage','getOuCreerSessionActive'].includes(item.name));
+    // let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage'].includes(item.name));
     let outils = [{functionDeclarations : convertirOutilsMCPversGemini(utils)}]
 
 
@@ -263,6 +322,12 @@ export async function traiterMessage({ phone, message , defaultName}) {
       })
     }
 
+    // ───────────── AJOUT (étape 3b du plan) ─────────────
+    const sessionData = await appelOutil(mcpClient, 'getOuCreerSessionActive', { phone }, phone)
+    const session_id = sessionData.session_id
+    log('INFO', 'AGENT', `Session active : ${session_id} (créée: ${sessionData.creee})`)
+    // ───────────── FIN AJOUT ─────────────
+
     // ####
     //-- Ajouter des informations indispensable dans le systeme prompt (telephone,nom)
     SYSTEM_PROMPT +=`
@@ -273,10 +338,14 @@ export async function traiterMessage({ phone, message , defaultName}) {
 
     `
 
+
     // ── 3. Chargement historique ──────────────────────────────
     log('INFO', 'AGENT', `Chargement historique pour ${phone}`)
+    // const historiqueData = await appelOutil(
+    //   mcpClient, 'getHistorique', { phone, limit: 15 }, phone
+    // )
     const historiqueData = await appelOutil(
-      mcpClient, 'getHistorique', { phone, limit: 15 }, phone
+      mcpClient, 'getHistorique', { session_id, limit: 15 }, phone
     )
     log('INFO', 'AGENT', `${historiqueData.total} messages dans l'historique`)
 
@@ -284,20 +353,21 @@ export async function traiterMessage({ phone, message , defaultName}) {
     log('INFO', 'AGENT', `Construction du contexte pour ${phone}`)
     const contents = []
 
+    //----- pas besoin de faire cette a cette endroit
     // Résumé glissant si disponible
-    if (profilData.found && profilData.profil?.resume) {
-      log('INFO', 'AGENT', `Injection résumé glissant`)
-      contents.push({
-        role: 'user',
-        parts: [{ text: `[Résumé des échanges précédents : ${profilData.profil.resume}]` }]
-      })
-      contents.push({
-        role: 'model',
-        parts: [{ text: 'Compris, je prends en compte ce contexte.' }]
-      })
-    }
+    // if (profilData.found && profilData.profil?.resume) {
+    //   log('INFO', 'AGENT', `Injection résumé glissant`)
+    //   contents.push({
+    //     role: 'user',
+    //     parts: [{ text: `[Résumé des échanges précédents : ${profilData.profil.resume}]` }]
+    //   })
+    //   contents.push({
+    //     role: 'model',
+    //     parts: [{ text: 'Compris, je prends en compte ce contexte.' }]
+    //   })
+    // }
 
-    // Historique des 15 derniers messages
+    // Historique des 15 derniers messages ce la session active uniquement
     for (const msg of historiqueData.messages) {
       // Reconstruction selon le type sauvegardé
       let parts
@@ -322,11 +392,21 @@ export async function traiterMessage({ phone, message , defaultName}) {
     // ── 5. Sauvegarde message client ──────────────────────────
     const { content: contenuSave, type: typeSave } = construireResume(message)
     log('INFO', 'AGENT', `Sauvegarde message client [${typeSave}] : ${contenuSave.substring(0, 60)}`)
+    // const saveUser = await appelOutil(mcpClient, 'sauvegarderMessage', {
+    //   phone,
+    //   role: 'user',
+    //   content: contenuSave,
+    //   type: typeSave
+    // }, phone)
     const saveUser = await appelOutil(mcpClient, 'sauvegarderMessage', {
       phone,
+      session_id,
       role: 'user',
       content: contenuSave,
-      type: typeSave
+      type: typeSave,
+      id_whatsapp: id_message,
+      repond_a_id_whatsapp,
+      reference_fichier: null
     }, phone)
     log('INFO', 'AGENT', `Message client sauvegardé — nb_messages: ${saveUser.nb_messages}`)
 
@@ -426,35 +506,82 @@ export async function traiterMessage({ phone, message , defaultName}) {
       reponseTexte = 'Désolé, je n\'ai pas pu traiter votre demande. Veuillez réessayer.'
     }
 
-    // ── 7. Sauvegarde réponse agent ───────────────────────────
-    log('INFO', 'AGENT', `Sauvegarde réponse agent pour ${phone}`)
-    const saveModel = await appelOutil(mcpClient, 'sauvegarderMessage', {
-      phone,
-      role: 'model',
-      content: reponseTexte,
-      type: 'text'
-    }, phone)
-    log('INFO', 'AGENT', `Réponse agent sauvegardée — nb_messages: ${saveModel.nb_messages}`)
+    // ── 7. Découpage + sauvegarde réponse agent (par élément) ──
+    // ───────────── MODIFIÉ (étape suivante du plan) ─────────────
+    // Chaque morceau (texte ou image) de la réponse devient sa
+    // propre ligne historique_messages, sauvegardée AVANT l'envoi
+    // (id_whatsapp encore inconnu), avec son id interne récupéré
+    // pour permettre à worker.js de mettre à jour l'id_whatsapp
+    // une fois l'envoi effectué.
+    log('INFO', 'AGENT', `Découpage réponse agent pour ${phone}`)
+    const elementsReponse = aplatirReponse(reponseTexte)
+    const elementsASauvegarder = []
+
+    for (const element of elementsReponse) {
+      const contenuSauvegarde = element.type === 'text'
+        ? element.content
+        : `[image] ${element.legende || ''}`.trim()
+
+      const saveModel = await appelOutil(mcpClient, 'sauvegarderMessage', {
+        phone,
+        session_id,
+        role: 'model',
+        content: contenuSauvegarde,
+        type: element.type,
+        reference_fichier: element.type === 'image' ? element.original_file : null
+      }, phone)
+
+      elementsASauvegarder.push({ ...element, id_interne: saveModel.id })
+    }
+
+    log('INFO', 'AGENT', `${elementsASauvegarder.length} élément(s) sauvegardé(s) pour ${phone}`)
 
     // ── 8. Vérification seuil résumé ──────────────────────────
-    // if (saveModel.nb_messages >= 32) {
-    //   log('INFO', 'AGENT', `Seuil résumé atteint (${saveModel.nb_messages}) — déclenchement résumé`)
-    //   try {
-    //     const resume = await appelOutil(mcpClient, 'resumerHistorique', { phone }, phone)
-    //     log('INFO', 'AGENT', `Résumé généré avec succès`, { apercu: resume.resume?.substring(0, 80) })
-    //   } catch (err) {
-    //     log('ERROR', 'AGENT', `Échec résumé — non bloquant`, err.message)
-    //   }
-    // }
+    // (toujours commenté — inchangé, sera rebranché à l'étape jobs_resume)
 
-    // log('INFO', 'AGENT', `=== Fin traitement pour ${phone} — succès ===`)
-    return { texte: reponseTexte }
+    return { elements: elementsASauvegarder }
+    // ───────────── FIN MODIFIÉ ─────────────
+
+    // // ── 7. Sauvegarde réponse agent ───────────────────────────
+    // log('INFO', 'AGENT', `Sauvegarde réponse agent pour ${phone}`)
+    // // const saveModel = await appelOutil(mcpClient, 'sauvegarderMessage', {
+    // //   phone,
+    // //   role: 'model',
+    // //   content: reponseTexte,
+    // //   type: 'text'
+    // // }, phone)
+    // const saveModel = await appelOutil(mcpClient, 'sauvegarderMessage', {
+    //   phone,
+    //   session_id,
+    //   role: 'model',
+    //   content: reponseTexte,
+    //   type: 'text',
+    //   reference_fichier: null
+    // }, phone)
+    // log('INFO', 'AGENT', `Réponse agent sauvegardée — nb_messages: ${saveModel.nb_messages}`)
+
+    // // ── 8. Vérification seuil résumé ──────────────────────────
+    // // if (saveModel.nb_messages >= 32) {
+    // //   log('INFO', 'AGENT', `Seuil résumé atteint (${saveModel.nb_messages}) — déclenchement résumé`)
+    // //   try {
+    // //     const resume = await appelOutil(mcpClient, 'resumerHistorique', { phone }, phone)
+    // //     log('INFO', 'AGENT', `Résumé généré avec succès`, { apercu: resume.resume?.substring(0, 80) })
+    // //   } catch (err) {
+    // //     log('ERROR', 'AGENT', `Échec résumé — non bloquant`, err.message)
+    // //   }
+    // // }
+
+    // // log('INFO', 'AGENT', `=== Fin traitement pour ${phone} — succès ===`)
+    // return { texte: reponseTexte }
 
   } catch (err) {
     log('ERROR', 'AGENT', `=== Erreur fatale pour ${phone} ===`, err.message)
     log('ERROR', 'AGENT', `Stack trace`, err.stack)
+    // return {
+    //   texte: 'Désolé, une erreur est survenue. Veuillez réessayer dans quelques instants.'
+    // }
     return {
-      texte: 'Désolé, une erreur est survenue. Veuillez réessayer dans quelques instants.'
+      elements: [{ type: 'text', content: 'Désolé, une erreur est survenue. Veuillez réessayer dans quelques instants.', id_interne: null }]
     }
   } finally {
     // ── 9. Fermeture MCP ──────────────────────────────────────

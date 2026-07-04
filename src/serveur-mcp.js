@@ -16,7 +16,8 @@ import {
   sauvegarderProfil,
   getHistorique,
   sauvegarderMessage,
-  resumerHistorique
+  resumerHistorique,
+  getOuCreerSessionActive // ───── AJOUT (étape 3a) ─────
 } from './outils-supabase.js'
 
 import {
@@ -113,22 +114,44 @@ server.registerTool(
 // Retourne : { messages: [{role, content, type, timestamp}], total }
 //            role = 'user' ou 'model'
 // ─────────────────────────────────────────────────────────────
+// server.registerTool(
+//   'getHistorique',
+//   {
+//     title: 'Obtenir l\'historique des messages',
+//     description: `Récupère les N derniers messages d'un client, triés du plus ancien au plus récent.
+//     Utiliser pour construire le contexte à injecter dans Gemini.
+//     Paramètres : phone (obligatoire), limit (optionnel, défaut 15).
+//     Retourne : { messages: [{role, content, type, timestamp}], total: number }
+//     Les rôles sont 'user' et 'model'.`,
+//     inputSchema: {
+//       phone: z.string().describe('Numéro WhatsApp'),
+//       limit: z.number().optional().describe('Nombre de messages à récupérer, défaut 15')
+//     }
+//   },
+//   async ({ phone, limit }) => {
+//     const resultat = await getHistorique({ phone, limit })
+//     return {
+//       content: [{ type: 'text', text: JSON.stringify(resultat) }]
+//     }
+//   }
+// )
+
 server.registerTool(
   'getHistorique',
   {
     title: 'Obtenir l\'historique des messages',
-    description: `Récupère les N derniers messages d'un client, triés du plus ancien au plus récent.
+    description: `Récupère les N derniers messages d'une session, triés du plus ancien au plus récent.
     Utiliser pour construire le contexte à injecter dans Gemini.
-    Paramètres : phone (obligatoire), limit (optionnel, défaut 15).
+    Paramètres : session_id (obligatoire), limit (optionnel, défaut 15).
     Retourne : { messages: [{role, content, type, timestamp}], total: number }
     Les rôles sont 'user' et 'model'.`,
     inputSchema: {
-      phone: z.string().describe('Numéro WhatsApp'),
+      session_id: z.string().describe('Identifiant de la session'),
       limit: z.number().optional().describe('Nombre de messages à récupérer, défaut 15')
     }
   },
-  async ({ phone, limit }) => {
-    const resultat = await getHistorique({ phone, limit })
+  async ({ session_id, limit }) => {
+    const resultat = await getHistorique({ session_id, limit })
     return {
       content: [{ type: 'text', text: JSON.stringify(resultat) }]
     }
@@ -143,25 +166,54 @@ server.registerTool(
 // Retourne : { success, nb_messages }
 //            Si nb_messages >= 32 → appeler resumerHistorique immédiatement
 // ─────────────────────────────────────────────────────────────
+// server.registerTool(
+//   'sauvegarderMessage',
+//   {
+//     title: 'Sauvegarder un message',
+//     description: `Sauvegarde un message dans l'historique Supabase et incrémente le compteur.
+//     Appeler DEUX FOIS par échange : une fois pour le message client (role='user'),
+//     une fois pour la réponse agent (role='model').
+//     Si nb_messages retourné >= 32, appeler resumerHistorique immédiatement.
+//     Paramètres : phone, role ('user' ou 'model'), content (texte), type ('text'|'audio'|'image').
+//     Retourne : { success: boolean, nb_messages: number }`,
+//     inputSchema: {
+//       phone: z.string().describe('Numéro WhatsApp'),
+//       role: z.enum(['user', 'model', 'assistant']).describe('Expéditeur : user ou model'),
+//       content: z.string().describe('Contenu du message'),
+//       type: z.enum(['text', 'audio', 'image']).optional().describe('Type de message, défaut text')
+//     }
+//   },
+//   async ({ phone, role, content, type }) => {
+//     const resultat = await sauvegarderMessage({ phone, role, content, type })
+//     return {
+//       content: [{ type: 'text', text: JSON.stringify(resultat) }]
+//     }
+//   }
+// )
+
 server.registerTool(
   'sauvegarderMessage',
   {
     title: 'Sauvegarder un message',
-    description: `Sauvegarde un message dans l'historique Supabase et incrémente le compteur.
+    description: `Sauvegarde un message dans l'historique Supabase (rattaché à une session) et incrémente le compteur de la session.
     Appeler DEUX FOIS par échange : une fois pour le message client (role='user'),
     une fois pour la réponse agent (role='model').
-    Si nb_messages retourné >= 32, appeler resumerHistorique immédiatement.
-    Paramètres : phone, role ('user' ou 'model'), content (texte), type ('text'|'audio'|'image').
+    Paramètres : phone, session_id, role ('user' ou 'model'), content (texte), type ('text'|'audio'|'image'),
+    id_whatsapp (optionnel), repond_a_id_whatsapp (optionnel), reference_fichier (optionnel, null tant qu'aucun stockage n'est branché).
     Retourne : { success: boolean, nb_messages: number }`,
     inputSchema: {
       phone: z.string().describe('Numéro WhatsApp'),
+      session_id: z.string().describe('Identifiant de la session'),
       role: z.enum(['user', 'model', 'assistant']).describe('Expéditeur : user ou model'),
       content: z.string().describe('Contenu du message'),
-      type: z.enum(['text', 'audio', 'image']).optional().describe('Type de message, défaut text')
+      type: z.enum(['text', 'audio', 'image']).optional().describe('Type de message, défaut text'),
+      id_whatsapp: z.string().optional().describe('Id du message WhatsApp'),
+      repond_a_id_whatsapp: z.string().optional().describe('Id du message WhatsApp auquel celui-ci répond'),
+      reference_fichier: z.string().optional().describe('Référence vers le fichier stocké, null si aucun stockage encore branché')
     }
   },
-  async ({ phone, role, content, type }) => {
-    const resultat = await sauvegarderMessage({ phone, role, content, type })
+  async ({ phone, session_id, role, content, type, id_whatsapp, repond_a_id_whatsapp, reference_fichier }) => {
+    const resultat = await sauvegarderMessage({ phone, session_id, role, content, type, id_whatsapp, repond_a_id_whatsapp, reference_fichier })
     return {
       content: [{ type: 'text', text: JSON.stringify(resultat) }]
     }
@@ -473,6 +525,36 @@ server.registerTool(
     }
   }
 )
+
+// ───────────── AJOUT (étape 3a du plan) ─────────────
+// Outil : getOuCreerSessionActive
+// Quand l'utiliser : PAS ENCORE utilisé par l'agent — préparation
+//                    pour l'étape 3b (branchement dans agent.js).
+//                    Ne sera pas exposé à Gemini (usage interne uniquement,
+//                    comme getHistorique/sauvegarderMessage/resumerHistorique).
+// Paramètres : phone
+// Retourne : { success, session_id?, creee?, erreur? }
+// ─────────────────────────────────────────────────────────────
+server.registerTool(
+  'getOuCreerSessionActive',
+  {
+    title: 'Obtenir ou créer la session active',
+    description: `Cherche la session 'active' du client dans Supabase, ou en crée une si aucune n'existe.
+    Usage interne — appelé par le code, pas par le modèle.
+    Paramètres : phone (string).
+    Retourne : { success: boolean, session_id?: string, creee?: boolean, erreur?: string }`,
+    inputSchema: {
+      phone: z.string().describe('Numéro WhatsApp format international')
+    }
+  },
+  async ({ phone }) => {
+    const resultat = await getOuCreerSessionActive({ phone })
+    return {
+      content: [{ type: 'text', text: JSON.stringify(resultat) }]
+    }
+  }
+)
+// ───────────── FIN AJOUT ─────────────
 
 // ══════════════════════════════════════════════════════════════
 // DÉMARRAGE DU SERVEUR

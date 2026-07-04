@@ -10,6 +10,8 @@
 import { Worker } from 'bullmq'
 import axios from 'axios'
 import { traiterMessage } from './agent.js'
+import {mettreAJourIdWhatsapp} from "./outils-supabase.js"
+// import { mettreAJourIdWhatsapp } from './outils-supabase.js'
 import 'dotenv/config'
 import { markRead } from './utils/utils.js'
 
@@ -123,41 +125,68 @@ async function telechargerMedia(mediaId) {
 //   { type: 'text', texte: string }
 //   { type: 'media', data: object }
 // ─────────────────────────────────────────────────────────────
-function parserReponse(reponseTexte) {
-  const reponse = reponseTexte.trim()
+// function parserReponse(reponseTexte) {
+//   const reponse = reponseTexte.trim()
 
-  if (reponse.startsWith('TEXT:')) {
-    const texte = reponse.slice(5).trim()
-    log('INFO', 'PARSER', `Type TEXT — ${texte.length} caractères`)
-    return { type: 'text', texte }
-  }
+//   if (reponse.startsWith('TEXT:')) {
+//     const texte = reponse.slice(5).trim()
+//     log('INFO', 'PARSER', `Type TEXT — ${texte.length} caractères`)
+//     return { type: 'text', texte }
+//   }
 
-  if (reponse.startsWith('MEDIA:')) {
-    const jsonBrut = reponse.slice(6).trim()
-    try {
-      const data = JSON.parse(jsonBrut)
-      log('INFO', 'PARSER', `Type MEDIA — ${data.medias?.length || 0} groupe(s)`)
-      return { type: 'media', data }
-    } catch (err) {
-      log('ERROR', 'PARSER', `JSON MEDIA invalide — fallback texte`, err.message)
-      log('ERROR', 'PARSER', `JSON brut reçu`, jsonBrut.substring(0, 200))
-      return { type: 'text', texte: jsonBrut }
-    }
-  }
+//   if (reponse.startsWith('MEDIA:')) {
+//     const jsonBrut = reponse.slice(6).trim()
+//     try {
+//       const data = JSON.parse(jsonBrut)
+//       log('INFO', 'PARSER', `Type MEDIA — ${data.medias?.length || 0} groupe(s)`)
+//       return { type: 'media', data }
+//     } catch (err) {
+//       log('ERROR', 'PARSER', `JSON MEDIA invalide — fallback texte`, err.message)
+//       log('ERROR', 'PARSER', `JSON brut reçu`, jsonBrut.substring(0, 200))
+//       return { type: 'text', texte: jsonBrut }
+//     }
+//   }
 
-  // Fallback — Gemini n'a pas respecté le format
-  log('WARN', 'PARSER', `Format non reconnu — traité comme texte brut`)
-  return { type: 'text', texte: reponse }
-}
+//   // Fallback — Gemini n'a pas respecté le format
+//   log('WARN', 'PARSER', `Format non reconnu — traité comme texte brut`)
+//   return { type: 'text', texte: reponse }
+// }
 
 // ─────────────────────────────────────────────────────────────
 // envoyerTexte — envoie un message texte simple
 // ─────────────────────────────────────────────────────────────
+// async function envoyerTexte(phone, texte) {
+//   if (!texte || !texte.trim()) return
+//   log('INFO', 'WHATSAPP', `Envoi texte à ${phone} — ${texte.length} caractères`)
+//   try {
+//     await axios.post(
+//       `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+//       {
+//         messaging_product: 'whatsapp',
+//         to: phone,
+//         type: 'text',
+//         text: { body: texte.trim() }
+//       },
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+//           'Content-Type': 'application/json'
+//         }
+//       }
+//     )
+//     log('INFO', 'WHATSAPP', `Texte envoyé à ${phone}`)
+//   } catch (err) {
+//     log('ERROR', 'WHATSAPP', `Échec envoi texte`, err.message)
+//     if (err.response?.data) log('ERROR', 'WHATSAPP', `Détail Meta`, err.response.data)
+//     throw err
+//   }
+// }
+
 async function envoyerTexte(phone, texte) {
-  if (!texte || !texte.trim()) return
+  if (!texte || !texte.trim()) return null
   log('INFO', 'WHATSAPP', `Envoi texte à ${phone} — ${texte.length} caractères`)
   try {
-    await axios.post(
+    const reponseMeta = await axios.post(
       `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: 'whatsapp',
@@ -172,7 +201,9 @@ async function envoyerTexte(phone, texte) {
         }
       }
     )
-    log('INFO', 'WHATSAPP', `Texte envoyé à ${phone}`)
+    const idWhatsapp = reponseMeta.data?.messages?.[0]?.id || null
+    log('INFO', 'WHATSAPP', `Texte envoyé à ${phone} — id: ${idWhatsapp}`)
+    return idWhatsapp
   } catch (err) {
     log('ERROR', 'WHATSAPP', `Échec envoi texte`, err.message)
     if (err.response?.data) log('ERROR', 'WHATSAPP', `Détail Meta`, err.response.data)
@@ -247,7 +278,7 @@ async function envoyerImage(phone, imageInfo) {
     }
 
     // Envoyer via WhatsApp
-    await axios.post(
+    const reponseMeta = await axios.post(
       `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: 'whatsapp',
@@ -262,11 +293,14 @@ async function envoyerImage(phone, imageInfo) {
         }
       }
     )
-    log('INFO', 'WHATSAPP', `Image envoyée — ${imageInfo.original_file}`)
+    const idWhatsapp = reponseMeta.data?.messages?.[0]?.id || null
+    log('INFO', 'WHATSAPP', `Image envoyée — ${imageInfo.original_file} — id: ${idWhatsapp}`)
+    return idWhatsapp
 
   } catch (err) {
     log('ERROR', 'WHATSAPP', `Échec image ${imageInfo.original_file}`, err.message)
     // Non bloquant — on continue avec l'image suivante
+    return null
   }
 }
 
@@ -276,52 +310,52 @@ async function envoyerImage(phone, imageInfo) {
 // Parse la réponse de l'agent et envoie texte + images
 // dans le bon ordre selon le format TEXT: ou MEDIA:
 // ─────────────────────────────────────────────────────────────
-async function envoyerReponse(phone, reponseTexte) {
-  log('INFO', 'WHATSAPP', `=== Début envoi réponse à ${phone} ===`)
+// async function envoyerReponse(phone, reponseTexte) {
+//   log('INFO', 'WHATSAPP', `=== Début envoi réponse à ${phone} ===`)
 
-  const parsed = parserReponse(reponseTexte)
+//   const parsed = parserReponse(reponseTexte)
 
-  // ── CAS 1 : Texte simple ──────────────────────────────────
-  if (parsed.type === 'text') {
-    await envoyerTexte(phone, parsed.texte)
-    log('INFO', 'WHATSAPP', `=== Envoi texte terminé ===`)
-    return
-  }
+//   // ── CAS 1 : Texte simple ──────────────────────────────────
+//   if (parsed.type === 'text') {
+//     await envoyerTexte(phone, parsed.texte)
+//     log('INFO', 'WHATSAPP', `=== Envoi texte terminé ===`)
+//     return
+//   }
 
-  // ── CAS 2 : Media ─────────────────────────────────────────
-  const { data } = parsed
+//   // ── CAS 2 : Media ─────────────────────────────────────────
+//   const { data } = parsed
 
-  // avant_bloc_media
-  if (data.avant_bloc_media?.trim()) {
-    await envoyerTexte(phone, data.avant_bloc_media)
-  }
+//   // avant_bloc_media
+//   if (data.avant_bloc_media?.trim()) {
+//     await envoyerTexte(phone, data.avant_bloc_media)
+//   }
 
-  // Parcourir chaque bloc media
-  for (const bloc of (data.medias || [])) {
+//   // Parcourir chaque bloc media
+//   for (const bloc of (data.medias || [])) {
 
-    // intro du bloc
-    if (bloc.intro?.trim()) {
-      await envoyerTexte(phone, bloc.intro)
-    }
+//     // intro du bloc
+//     if (bloc.intro?.trim()) {
+//       await envoyerTexte(phone, bloc.intro)
+//     }
 
-    // Images du bloc
-    for (const imageInfo of (bloc.images || [])) {
-      await envoyerImage(phone, imageInfo)
-    }
+//     // Images du bloc
+//     for (const imageInfo of (bloc.images || [])) {
+//       await envoyerImage(phone, imageInfo)
+//     }
 
-    // conclusion du bloc
-    if (bloc.conclusion?.trim()) {
-      await envoyerTexte(phone, bloc.conclusion)
-    }
-  }
+//     // conclusion du bloc
+//     if (bloc.conclusion?.trim()) {
+//       await envoyerTexte(phone, bloc.conclusion)
+//     }
+//   }
 
-  // apres_bloc_media
-  if (data.apres_bloc_media?.trim()) {
-    await envoyerTexte(phone, data.apres_bloc_media)
-  }
+//   // apres_bloc_media
+//   if (data.apres_bloc_media?.trim()) {
+//     await envoyerTexte(phone, data.apres_bloc_media)
+//   }
 
-  log('INFO', 'WHATSAPP', `=== Envoi media terminé pour ${phone} ===`)
-}
+//   log('INFO', 'WHATSAPP', `=== Envoi media terminé pour ${phone} ===`)
+// }
 
 // ─────────────────────────────────────────────────────────────
 // traiterJob — traite un job BullMQ
@@ -387,13 +421,25 @@ async function traiterJob(job) {
     // ───────────── AJOUT (étape 2 du plan) ─────────────
     // On fait suivre id_message et repond_a_id_whatsapp jusqu'à l'agent.
     // agent.js ne les utilise pas encore — ils attendent l'étape 3 (sessions).
-    const { texte: reponse } = await traiterMessage({ phone, message,defaultName, id_message, repond_a_id_whatsapp })
-    // ───────────── FIN AJOUT ─────────────
-    // const { texte: reponse } = await traiterMessage({ phone, message,defaultName,repond_a_id_whatsapp})
-    log('INFO', 'WORKER', `Réponse agent obtenue — ${reponse?.length} caractères`)
+    const { elements } = await traiterMessage({ phone, message,defaultName, id_message, repond_a_id_whatsapp })
+    log('INFO', 'WORKER', `${elements.length} élément(s) à envoyer pour ${phone}`)
 
-    // ── Envoi WhatsApp ────────────────────────────────────────
-    await envoyerReponse(phone, reponse)
+    // ── Envoi WhatsApp, élément par élément, dans l'ordre ─────
+    // ───────────── AJOUT (étape suivante du plan) ─────────────
+    for (const element of elements) {
+      let idWhatsapp = null
+
+      if (element.type === 'text') {
+        idWhatsapp = await envoyerTexte(phone, element.content)
+      } else if (element.type === 'image') {
+        idWhatsapp = await envoyerImage(phone, element)
+      }
+
+      if (idWhatsapp && element.id_interne) {
+        await mettreAJourIdWhatsapp({ id: element.id_interne, id_whatsapp: idWhatsapp })
+      }
+    }
+    // ───────────── FIN AJOUT ─────────────
 
     log('INFO', 'WORKER', `=== Job [${job.id}] terminé avec succès ===`)
 
@@ -403,7 +449,7 @@ async function traiterJob(job) {
 
     // Tentative d'envoi d'un message d'erreur au client
     try {
-      await envoyerReponse(
+      await envoyerTexte(
         phone,
         'Désolé, une erreur est survenue. Veuillez réessayer dans quelques instants.'
       )
