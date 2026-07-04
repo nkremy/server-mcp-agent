@@ -208,11 +208,11 @@ app.post('/webhook', async (req, res) => {
       return
     }
 
-    console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    console.dir(body,{depth:null});
-    console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    // console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    // console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    // console.dir(body,{depth:null});
+    // console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    // console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     
     // ── Vérification objet WhatsApp ───────────────────────────
     if (body.object !== 'whatsapp_business_account') {
@@ -226,7 +226,11 @@ app.post('/webhook', async (req, res) => {
     //--- ajouter du nom fourni pas whatsapp et du messageid dans le payload du job
     jobData.id_message = body.entry[0].changes[0].value.messages[0].id;
     jobData.defaultName = body.entry[0].changes[0].value.contacts[0].profile.name || `client_${jobData.phone}`;
-
+    //--- ajouter l'id du message auquel le client répond, si présent (sinon null)
+    jobData.repond_a_id_whatsapp = body.entry[0].changes[0].value.messages[0].context?.id || null;
+    if (jobData.repond_a_id_whatsapp) {
+      log('INFO', 'WEBHOOK', `Message en réponse à ${jobData.repond_a_id_whatsapp}`)
+    }
     // ── Ajout dans BullMQ ─────────────────────────────────────
     const job = await fileMessages.add(
       `msg-${jobData.phone}-${Date.now()}`,
