@@ -139,20 +139,20 @@ export async function mettreAJourIdWhatsapp({ id, id_whatsapp }) {
 }
 // ───────────── FIN AJOUT ─────────────
 
-// ───────────── AJOUT (étape suivante du plan) ─────────────
-// mettreAJourIdWhatsapp — met à jour l'id_whatsapp réel d'une ligne
-// déjà sauvegardée, une fois l'envoi effectif fait par worker.js.
-// Appelée DIRECTEMENT (pas via MCP) car c'est un simple update
-// technique, pas une décision que Gemini doit prendre.
-export async function mettreAJourIdWhatsapp({ id, id_whatsapp }) {
-  const { error } = await supabase
-    .from('historique_messages')
-    .update({ id_whatsapp })
-    .eq('id', id)
+// // ───────────── AJOUT (étape suivante du plan) ─────────────
+// // mettreAJourIdWhatsapp — met à jour l'id_whatsapp réel d'une ligne
+// // déjà sauvegardée, une fois l'envoi effectif fait par worker.js.
+// // Appelée DIRECTEMENT (pas via MCP) car c'est un simple update
+// // technique, pas une décision que Gemini doit prendre.
+// export async function mettreAJourIdWhatsapp({ id, id_whatsapp }) {
+//   const { error } = await supabase
+//     .from('historique_messages')
+//     .update({ id_whatsapp })
+//     .eq('id', id)
 
-  if (error) return { success: false, erreur: error.message }
-  return { success: true }
-}
+//   if (error) return { success: false, erreur: error.message }
+//   return { success: true }
+// }
 // ───────────── FIN AJOUT ─────────────
 
 export async function resumerHistorique({ phone }) {
