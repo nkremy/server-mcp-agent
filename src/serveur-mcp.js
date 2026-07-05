@@ -18,7 +18,7 @@ import {
   sauvegarderMessage,
   resumerHistorique,
   getOuCreerSessionActive, // ───── AJOUT (étape 3a) ─────
-  getDernierResumeSession // ───── AJOUT (étape 3c) ─────
+  getDerniersResumesSessions // ───── AJOUT (étape 3c) ─────
 } from './outils-supabase.js'
 
 import {
