@@ -205,11 +205,11 @@ server.registerTool(
       phone: z.string().describe('Numéro WhatsApp'),
       session_id: z.string().describe('Identifiant de la session'),
       role: z.enum(['user', 'model', 'assistant']).describe('Expéditeur : user ou model'),
-      content: z.string().describe('Contenu du message'),
+      content: z.string().nullable().optional().describe('Contenu du message'),
       type: z.enum(['text', 'audio', 'image']).optional().describe('Type de message, défaut text'),
-      id_whatsapp: z.string().optional().describe('Id du message WhatsApp'),
-      repond_a_id_whatsapp: z.string().optional().describe('Id du message WhatsApp auquel celui-ci répond'),
-      reference_fichier: z.string().optional().describe('Référence vers le fichier stocké, null si aucun stockage encore branché')
+    id_whatsapp: z.string().nullable().optional().describe('Id du message WhatsApp'),
+      repond_a_id_whatsapp: z.string().nullable().optional().describe('Id du message WhatsApp auquel celui-ci répond'),
+      reference_fichier: z.string().nullable().optional().describe('Référence vers le fichier stocké, null si aucun stockage encore branché')
     }
   },
   async ({ phone, session_id, role, content, type, id_whatsapp, repond_a_id_whatsapp, reference_fichier }) => {
