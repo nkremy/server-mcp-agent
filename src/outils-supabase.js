@@ -155,53 +155,53 @@ export async function mettreAJourIdWhatsapp({ id, id_whatsapp }) {
 // }
 // ───────────── FIN AJOUT ─────────────
 
-export async function resumerHistorique({ phone }) {
-  const { data: anciens, error } = await supabase
-    .from('historique_messages')
-    .select('id, role, content, timestamp')
-    .eq('phone', phone)
-    .order('timestamp', { ascending: true })
-    .limit(15)
+// export async function resumerHistorique({ phone }) {
+//   const { data: anciens, error } = await supabase
+//     .from('historique_messages')
+//     .select('id, role, content, timestamp')
+//     .eq('phone', phone)
+//     .order('timestamp', { ascending: true })
+//     .limit(15)
 
-  if (error || !anciens || anciens.length === 0) {
-    return { success: false, erreur: 'Aucun message à résumer' }
-  }
+//   if (error || !anciens || anciens.length === 0) {
+//     return { success: false, erreur: 'Aucun message à résumer' }
+//   }
 
-  const contenu = anciens.map(m => ({
-    role: 'user',
-    parts: [{
-      text: `${m.role === 'user' ? 'Client' : 'Agent'}: ${m.content}`
-    }]
-  }))
+//   const contenu = anciens.map(m => ({
+//     role: 'user',
+//     parts: [{
+//       text: `${m.role === 'user' ? 'Client' : 'Agent'}: ${m.content}`
+//     }]
+//   }))
 
-  contenu.push({
-    role: 'user',
-    parts: [{
-      text: `Résume cette conversation en 3-5 points max. Garde uniquement les informations importantes sur le client, ses préférences, ses commandes passées et ses produits d'intérêt.`
-    }]
-  })
+//   contenu.push({
+//     role: 'user',
+//     parts: [{
+//       text: `Résume cette conversation en 3-5 points max. Garde uniquement les informations importantes sur le client, ses préférences, ses commandes passées et ses produits d'intérêt.`
+//     }]
+//   })
 
-  const reponse = await ai.models.generateContent({
-    model: process.env.GEMINI_MODEL,
-    contents: contenu
-  })
+//   const reponse = await ai.models.generateContent({
+//     model: process.env.GEMINI_MODEL,
+//     contents: contenu
+//   })
 
-  const resume = reponse.text
+//   const resume = reponse.text
 
-  const ids = anciens.map(m => m.id)
-  await supabase.from('historique_messages').delete().in('id', ids)
+//   const ids = anciens.map(m => m.id)
+//   await supabase.from('historique_messages').delete().in('id', ids)
 
-  await supabase
-    .from('profils_whatsapp')
-    .update({
-      resume,
-      nb_messages: 15,
-      mis_a_jour_le: new Date().toISOString()
-    })
-    .eq('phone', phone)
+//   await supabase
+//     .from('profils_whatsapp')
+//     .update({
+//       resume,
+//       nb_messages: 15,
+//       mis_a_jour_le: new Date().toISOString()
+//     })
+//     .eq('phone', phone)
 
-  return { success: true, resume }
-}
+//   return { success: true, resume }
+// }
 
 // ───────────── AJOUT (étape 3a du plan) ─────────────
 // getOuCreerSessionActive — trouve la session 'active' du client,
