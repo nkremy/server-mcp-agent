@@ -446,7 +446,7 @@ export async function traiterMessage({ phone, message , defaultName , id_message
     log('INFO', 'AGENT', `Contexte construit — ${contents.length} éléments au total`)
 
     // ── 5. Sauvegarde message client ──────────────────────────
-    const { content: contenuSave, type: typeSave } = construireResume(message)
+    let { content: contenuSave, type: typeSave } = construireResume(message)
     log('INFO', 'AGENT', `Sauvegarde message client [${typeSave}] : ${contenuSave.substring(0, 60)}`)
     // ───────────── MODIFIÉ (Flux A) ─────────────
     // let { content: contenuSave, type: typeSave } = construireResume(message)
