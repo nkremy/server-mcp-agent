@@ -240,3 +240,87 @@ export async function getOuCreerSessionActive({ phone }) {
   return { success: true, session_id: nouvelleSession.id, creee: true }
 }
 // ───────────── FIN AJOUT ─────────────
+
+export async function resumerHistorique({ session_id }) {
+  // On marque la session comme étant en cours de résumé
+  await supabase
+    .from('sessions')
+    .update({ statut: 'en_cours_de_resume' })
+    .eq('id', session_id)
+
+  const { data: messages, error: erreurLecture } = await supabase
+    .from('historique_messages')
+    .select('id, role, content, timestamp')
+    .eq('session_id', session_id)
+    .order('timestamp', { ascending: true })
+    // Pas de .limit() : on prend TOUS les messages de la session,
+    // qu'il y en ait 2 ou 200.
+
+  if (erreurLecture) {
+    console.error(`[RESUME] Erreur lecture historique pour session ${session_id}`, erreurLecture.message)
+    return { success: false, erreur: erreurLecture.message }
+  }
+
+  if (!messages || messages.length === 0) {
+    // Session vide (jamais eu de message) — rien à résumer, on la clôture proprement
+    await supabase
+      .from('sessions')
+      .update({ statut: 'terminee', resume: null, fin_session: new Date().toISOString() })
+      .eq('id', session_id)
+    return { success: true, resume: null }
+  }
+
+  try {
+    const contenu = messages.map(m => ({
+      role: 'user',
+      parts: [{ text: `${m.role === 'user' ? 'Client' : 'Agent'}: ${m.content}` }]
+    }))
+
+    contenu.push({
+      role: 'user',
+      parts: [{ text: `Résume cette conversation en 3-5 points max. Garde uniquement les informations importantes sur le client, ses préférences, ses commandes passées et ses produits d'intérêt.` }]
+    })
+
+    const reponse = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL,
+      contents: contenu
+    })
+
+    const resume = reponse.text
+
+    await supabase
+      .from('sessions')
+      .update({ resume, statut: 'terminee', fin_session: new Date().toISOString() })
+      .eq('id', session_id)
+
+    return { success: true, resume }
+
+  } catch (err) {
+    // ── Échec du résumé — on log, mais on NE remet PAS le statut à 'active' ──
+    // La session reste 'en_cours_de_resume' : c'est le signal qu'un futur
+    // scanner de détection pourra utiliser pour repérer un résumé échoué.
+    console.error(`[RESUME] Échec résumé pour session ${session_id}`, err.message)
+    return { success: false, erreur: err.message }
+  }
+}
+
+// ───────────── AJOUT (étape 3c du plan, généralisé) ─────────────
+// getDerniersResumesSessions — récupère jusqu'à `nombre` résumés des
+// dernières sessions TERMINEES de ce client (différentes de la session
+// active courante), triés du plus récent au plus ancien.
+// Retourne moins que `nombre` si moins de résumés existent.
+export async function getDerniersResumesSessions({ phone, session_id_courante, nombre = 1 }) {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('resume, fin_session')
+    .eq('phone', phone)
+    .eq('statut', 'terminee')
+    .neq('id', session_id_courante)
+    .not('resume', 'is', null)
+    .order('fin_session', { ascending: false })
+    .limit(nombre)
+
+  if (error || !data || data.length === 0) return { found: false, resumes: [] }
+  return { found: true, resumes: data.map(s => s.resume) }
+}
+// ───────────── FIN AJOUT ─────────────

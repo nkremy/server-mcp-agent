@@ -17,7 +17,8 @@ import {
   getHistorique,
   sauvegarderMessage,
   resumerHistorique,
-  getOuCreerSessionActive // ───── AJOUT (étape 3a) ─────
+  getOuCreerSessionActive, // ───── AJOUT (étape 3a) ─────
+  getDernierResumeSession // ───── AJOUT (étape 3c) ─────
 } from './outils-supabase.js'
 
 import {
@@ -231,23 +232,57 @@ server.registerTool(
 server.registerTool(
   'resumerHistorique',
   {
-    title: 'Résumer l\'historique',
-    description: `Résume les 15 messages les plus anciens via Gemini et les supprime.
-    Appeler UNIQUEMENT quand sauvegarderMessage retourne nb_messages >= 32.
-    Le résumé est sauvegardé dans le profil client (champ resume).
-    Paramètres : phone (obligatoire).
-    Retourne : { success: boolean, resume: string }`,
+    title: 'Résumer l\'historique d\'une session',
+    description: `Résume TOUS les messages d'une session via Gemini (peu importe le nombre) et clôture la session.
+    Usage : appelée par le scanner d'inactivité (scanner-resume.js), pas par Gemini directement.
+    Ne supprime aucun message. Passe la session en 'en_cours_de_resume' au début,
+    puis 'terminee' si succès (avec resume + fin_session), ou laisse 'en_cours_de_resume'
+    si échec (à détecter plus tard par un scanner de résumés bloqués).
+    Paramètres : session_id (obligatoire).
+    Retourne : { success: boolean, resume?: string, erreur?: string }`,
     inputSchema: {
-      phone: z.string().describe('Numéro WhatsApp')
+      session_id: z.string().describe('Identifiant de la session à résumer')
     }
   },
-  async ({ phone }) => {
-    const resultat = await resumerHistorique({ phone })
+  async ({ session_id }) => {
+    const resultat = await resumerHistorique({ session_id })
     return {
       content: [{ type: 'text', text: JSON.stringify(resultat) }]
     }
   }
 )
+
+// ───────────── AJOUT (étape 3c du plan) ─────────────
+// Outil : getDernierResumeSession
+// Quand l'utiliser : PAS par Gemini — appelé par agent.js en interne,
+// pour injecter le résumé de la dernière session terminée dans le
+// contexte d'une nouvelle session qui vient de naître.
+server.registerTool(
+  'getDerniersResumesSessions',
+  {
+    title: 'Obtenir les derniers résumés de sessions',
+    description: `Cherche jusqu'à 'nombre' sessions 'terminee' (avec resume non-null) de ce client,
+    différentes de la session active courante, triées de la plus récente à la plus ancienne.
+    Retourne moins que 'nombre' si moins de résumés existent.
+    Usage interne — appelé par le code, pas par le modèle.
+    Paramètres : phone, session_id_courante, nombre (défaut 1).
+    Retourne : { found: boolean, resumes: string[] } (du plus récent au plus ancien)`,
+    inputSchema: {
+      phone: z.string().describe('Numéro WhatsApp'),
+      session_id_courante: z.string().describe('Identifiant de la session active actuelle, à exclure'),
+      nombre: z.number().optional().describe('Nombre de résumés à récupérer, défaut 1')
+    }
+  },
+  async ({ phone, session_id_courante, nombre }) => {
+    const resultat = await getDerniersResumesSessions({ phone, session_id_courante, nombre })
+    return {
+      content: [{ type: 'text', text: JSON.stringify(resultat) }]
+    }
+  }
+)
+// ───────────── FIN AJOUT ─────────────
+
+// ══════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════
 // BLOC 2 — OUTILS DOLIBARR

@@ -301,7 +301,8 @@ export async function traiterMessage({ phone, message , defaultName , id_message
 
     //--- CHARGEMET DES OUTILS -----------------------------------
     let {tools}  = await mcpClient.listTools();
-    let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage','getOuCreerSessionActive'].includes(item.name));
+    let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage','getOuCreerSessionActive','getDernierResumeSession'].includes(item.name));
+    // let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage','getOuCreerSessionActive'].includes(item.name));
     // let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage'].includes(item.name));
     let outils = [{functionDeclarations : convertirOutilsMCPversGemini(utils)}]
 
@@ -352,6 +353,34 @@ export async function traiterMessage({ phone, message , defaultName , id_message
     // ── 4. Construction du contexte ───────────────────────────
     log('INFO', 'AGENT', `Construction du contexte pour ${phone}`)
     const contents = []
+
+    // ───────────── MODIFIÉ (étape 3c, généralisé) ─────────────
+    // Injection des N derniers résumés de sessions précédentes.
+    // NB_RESUMES_A_INJECTER : ajuste cette valeur ici selon tes besoins
+    // (2, 3, 5...) — c'est le seul endroit à modifier.
+    const NB_RESUMES_A_INJECTER = 3
+    const derniersResumes = await appelOutil(
+      mcpClient, 'getDerniersResumesSessions',
+      { phone, session_id_courante: session_id, nombre: NB_RESUMES_A_INJECTER },
+      phone
+    )
+    if (derniersResumes.found && derniersResumes.resumes?.length) {
+      // Injection du plus ancien au plus récent (le plus récent reste
+      // le plus "proche" dans le contexte, effet de récence naturel).
+      const resumesOrdreChronologique = [...derniersResumes.resumes].reverse()
+      for (const resume of resumesOrdreChronologique) {
+        contents.push({
+          role: 'user',
+          parts: [{ text: `[Résumé d'une session précédente : ${resume}]` }]
+        })
+        contents.push({
+          role: 'model',
+          parts: [{ text: 'Compris, je prends en compte ce contexte.' }]
+        })
+      }
+      log('INFO', 'AGENT', `${resumesOrdreChronologique.length} résumé(s) de session(s) précédente(s) injecté(s)`)
+    }
+    // ───────────── FIN MODIFIÉ ─────────────
 
     //----- pas besoin de faire cette a cette endroit
     // Résumé glissant si disponible
