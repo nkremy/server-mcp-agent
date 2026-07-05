@@ -1,8 +1,9 @@
 import supabase from './supabase-client.js'
 import 'dotenv/config'
-import { GoogleGenAI } from '@google/genai'
+import { appellerModele } from './mesure-tokens.js'
+// import { GoogleGenAI } from '@google/genai'
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+// const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
 export async function getProfilClient({ phone }) {
   const { data, error } = await supabase
@@ -281,10 +282,10 @@ export async function resumerHistorique({ session_id }) {
       parts: [{ text: `Résume cette conversation en 3-5 points max. Garde uniquement les informations importantes sur le client, ses préférences, ses commandes passées et ses produits d'intérêt.` }]
     })
 
-    const reponse = await ai.models.generateContent({
+    const reponse = await appellerModele({
       model: process.env.GEMINI_MODEL,
       contents: contenu
-    })
+    }, { phone: null, session_id, type_appel: 'resume_session' })
 
     const resume = reponse.text
 

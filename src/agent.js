@@ -8,17 +8,18 @@
 // Boucle     : manuelle — on inspecte parts[] à chaque tour
 // Logs       : console.error() — visible sans corrompre stdio
 // ─────────────────────────────────────────────────────────────
-import { GoogleGenAI } from '@google/genai'
+// import { GoogleGenAI } from '@google/genai'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { fileURLToPath } from 'url'
 import path from 'path'
+import { appellerModele } from './mesure-tokens.js'
 import 'dotenv/config'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = path.dirname(__filename)
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+// const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
 // ─────────────────────────────────────────────────────────────
 // Logger — préfixe horodaté pour chaque log
@@ -452,14 +453,22 @@ export async function traiterMessage({ phone, message , defaultName , id_message
       // Appel Gemini
       let reponse
       try {
-        reponse = await ai.models.generateContent({
+        reponse = await appellerModele({
           model: process.env.GEMINI_MODEL,
           contents,
           config: { 
             systemInstruction: SYSTEM_PROMPT ,
             tools : outils
           }
-        })
+        }, { phone, session_id, type_appel: 'conversation' })
+        // reponse = await ai.models.generateContent({
+        //   model: process.env.GEMINI_MODEL,
+        //   contents,
+        //   config: { 
+        //     systemInstruction: SYSTEM_PROMPT ,
+        //     tools : outils
+        //   }
+        // })
       } catch (err) {
         log('ERROR', 'GEMINI', `Erreur appel Gemini tour ${tourBoucle}`, err.message)
 
