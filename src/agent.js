@@ -262,6 +262,32 @@ function construireResume(message) {
   }
 }
 
+// ───────────── AJOUT (Flux A) ─────────────
+// transcrireAudio — obtient une VRAIE transcription texte de l'audio,
+// via un appel Gemini dédié (séparé de la conversation principale).
+// En cas d'échec, on retombe sur le placeholder existant plutôt que
+// de bloquer tout le traitement du message.
+async function transcrireAudio(base64, mimeType, contexte) {
+  try {
+    const reponse = await appellerModele({
+      model: process.env.GEMINI_MODEL,
+      contents: [{
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType, data: base64 } },
+          { text: 'Transcris cet audio en texte, mot pour mot, sans commentaire ni ajout uniquement la transcription.' }
+        ]
+      }]
+    }, { ...contexte, type_appel: 'transcription_audio' })
+
+    return reponse.text?.trim() || '[audio non transcriptible]'
+  } catch (err) {
+    log('ERROR', 'AGENT', `Échec transcription audio — fallback placeholder`, err.message)
+    return '[audio]'
+  }
+}
+// ───────────── FIN AJOUT ─────────────
+
 // ─────────────────────────────────────────────────────────────
 // convertirOutilsMCPversGemini — prend les outils au serveur mcp et les met au format gemini
 // ─────────────────────────────────────────────────────────────
@@ -422,12 +448,21 @@ export async function traiterMessage({ phone, message , defaultName , id_message
     // ── 5. Sauvegarde message client ──────────────────────────
     const { content: contenuSave, type: typeSave } = construireResume(message)
     log('INFO', 'AGENT', `Sauvegarde message client [${typeSave}] : ${contenuSave.substring(0, 60)}`)
-    // const saveUser = await appelOutil(mcpClient, 'sauvegarderMessage', {
-    //   phone,
-    //   role: 'user',
-    //   content: contenuSave,
-    //   type: typeSave
-    // }, phone)
+    // ───────────── MODIFIÉ (Flux A) ─────────────
+    // let { content: contenuSave, type: typeSave } = construireResume(message)
+
+    // Transcription réelle si audio (remplace le placeholder "[audio]")
+    if (typeSave === 'audio' && message?.base64) {
+      contenuSave = await transcrireAudio(message.base64, message.mimeType, { phone, session_id })
+    }
+
+    // reference_fichier vient du rangement fait dans worker.js (Flux A) —
+    // présent uniquement pour image/audio, null pour un texte simple
+    const referenceFichierClient = (message?.type === 'image' || message?.type === 'audio')
+      ? (message.reference || null)
+      : null
+
+    log('INFO', 'AGENT', `Sauvegarde message client [${typeSave}] : ${contenuSave.substring(0, 60)}`)
     const saveUser = await appelOutil(mcpClient, 'sauvegarderMessage', {
       phone,
       session_id,
@@ -436,9 +471,11 @@ export async function traiterMessage({ phone, message , defaultName , id_message
       type: typeSave,
       id_whatsapp: id_message,
       repond_a_id_whatsapp,
-      reference_fichier: null
+      reference_fichier: referenceFichierClient,
+      reference_produit: null
     }, phone)
     log('INFO', 'AGENT', `Message client sauvegardé — nb_messages: ${saveUser.nb_messages}`)
+    // ───────────── FIN MODIFIÉ ─────────────
 
     // ── 6. Boucle agent Gemini ────────────────────────────────
     log('INFO', 'GEMINI', `Premier appel Gemini pour ${phone}`)
@@ -566,7 +603,8 @@ export async function traiterMessage({ phone, message , defaultName , id_message
         role: 'model',
         content: contenuSauvegarde,
         type: element.type,
-        reference_fichier: element.type === 'image' ? element.original_file : null
+        reference_fichier: element.type === 'image' ? element.original_file : null,
+        reference_produit: null
       }, phone)
 
       elementsASauvegarder.push({ ...element, id_interne: saveModel.id })
@@ -580,37 +618,7 @@ export async function traiterMessage({ phone, message , defaultName , id_message
     return { elements: elementsASauvegarder }
     // ───────────── FIN MODIFIÉ ─────────────
 
-    // // ── 7. Sauvegarde réponse agent ───────────────────────────
-    // log('INFO', 'AGENT', `Sauvegarde réponse agent pour ${phone}`)
-    // // const saveModel = await appelOutil(mcpClient, 'sauvegarderMessage', {
-    // //   phone,
-    // //   role: 'model',
-    // //   content: reponseTexte,
-    // //   type: 'text'
-    // // }, phone)
-    // const saveModel = await appelOutil(mcpClient, 'sauvegarderMessage', {
-    //   phone,
-    //   session_id,
-    //   role: 'model',
-    //   content: reponseTexte,
-    //   type: 'text',
-    //   reference_fichier: null
-    // }, phone)
-    // log('INFO', 'AGENT', `Réponse agent sauvegardée — nb_messages: ${saveModel.nb_messages}`)
 
-    // // ── 8. Vérification seuil résumé ──────────────────────────
-    // // if (saveModel.nb_messages >= 32) {
-    // //   log('INFO', 'AGENT', `Seuil résumé atteint (${saveModel.nb_messages}) — déclenchement résumé`)
-    // //   try {
-    // //     const resume = await appelOutil(mcpClient, 'resumerHistorique', { phone }, phone)
-    // //     log('INFO', 'AGENT', `Résumé généré avec succès`, { apercu: resume.resume?.substring(0, 80) })
-    // //   } catch (err) {
-    // //     log('ERROR', 'AGENT', `Échec résumé — non bloquant`, err.message)
-    // //   }
-    // // }
-
-    // // log('INFO', 'AGENT', `=== Fin traitement pour ${phone} — succès ===`)
-    // return { texte: reponseTexte }
 
   } catch (err) {
     log('ERROR', 'AGENT', `=== Erreur fatale pour ${phone} ===`, err.message)

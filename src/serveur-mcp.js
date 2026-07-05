@@ -167,30 +167,7 @@ server.registerTool(
 // Retourne : { success, nb_messages }
 //            Si nb_messages >= 32 → appeler resumerHistorique immédiatement
 // ─────────────────────────────────────────────────────────────
-// server.registerTool(
-//   'sauvegarderMessage',
-//   {
-//     title: 'Sauvegarder un message',
-//     description: `Sauvegarde un message dans l'historique Supabase et incrémente le compteur.
-//     Appeler DEUX FOIS par échange : une fois pour le message client (role='user'),
-//     une fois pour la réponse agent (role='model').
-//     Si nb_messages retourné >= 32, appeler resumerHistorique immédiatement.
-//     Paramètres : phone, role ('user' ou 'model'), content (texte), type ('text'|'audio'|'image').
-//     Retourne : { success: boolean, nb_messages: number }`,
-//     inputSchema: {
-//       phone: z.string().describe('Numéro WhatsApp'),
-//       role: z.enum(['user', 'model', 'assistant']).describe('Expéditeur : user ou model'),
-//       content: z.string().describe('Contenu du message'),
-//       type: z.enum(['text', 'audio', 'image']).optional().describe('Type de message, défaut text')
-//     }
-//   },
-//   async ({ phone, role, content, type }) => {
-//     const resultat = await sauvegarderMessage({ phone, role, content, type })
-//     return {
-//       content: [{ type: 'text', text: JSON.stringify(resultat) }]
-//     }
-//   }
-// )
+
 
 server.registerTool(
   'sauvegarderMessage',
@@ -206,15 +183,16 @@ server.registerTool(
       phone: z.string().describe('Numéro WhatsApp'),
       session_id: z.string().describe('Identifiant de la session'),
       role: z.enum(['user', 'model', 'assistant']).describe('Expéditeur : user ou model'),
-      content: z.string().nullable().optional().describe('Contenu du message'),
+      content: z.string().describe('Contenu du message'),
       type: z.enum(['text', 'audio', 'image']).optional().describe('Type de message, défaut text'),
-    id_whatsapp: z.string().nullable().optional().describe('Id du message WhatsApp'),
+      id_whatsapp: z.string().nullable().optional().describe('Id du message WhatsApp'),
       repond_a_id_whatsapp: z.string().nullable().optional().describe('Id du message WhatsApp auquel celui-ci répond'),
-      reference_fichier: z.string().nullable().optional().describe('Référence vers le fichier stocké, null si aucun stockage encore branché')
+      reference_fichier: z.string().nullable().optional().describe('Référence du fichier (Dolibarr pour un produit, ou service de stockage pour un média client)'),
+      reference_produit: z.string().nullable().optional().describe('Référence produit (rempli UNIQUEMENT pour une image produit envoyée par nous)')
     }
   },
-  async ({ phone, session_id, role, content, type, id_whatsapp, repond_a_id_whatsapp, reference_fichier }) => {
-    const resultat = await sauvegarderMessage({ phone, session_id, role, content, type, id_whatsapp, repond_a_id_whatsapp, reference_fichier })
+  async ({ phone, session_id, role, content, type, id_whatsapp, repond_a_id_whatsapp, reference_fichier, reference_produit }) => {
+    const resultat = await sauvegarderMessage({ phone, session_id, role, content, type, id_whatsapp, repond_a_id_whatsapp, reference_fichier, reference_produit })
     return {
       content: [{ type: 'text', text: JSON.stringify(resultat) }]
     }

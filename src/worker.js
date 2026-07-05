@@ -82,105 +82,30 @@ async function telechargerMedia(mediaId) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// envoyerReponse — envoie un message texte via Meta Cloud API
+// rangerFichierClient — appelle le service gestionnaire-fichier
+// pour ranger SYSTÉMATIQUEMENT tout média entrant (image ou audio).
+// Jamais conditionnel — un échec ici ne bloque JAMAIS le traitement
+// du message (le client aura quand même sa réponse), juste loggé.
 //
-// Paramètres :
-//   phone  (string) — numéro destinataire ex: +243812345678
-//   texte  (string) — réponse à envoyer
+// Retourne : reference (string) ou null si l'appel a échoué
 // ─────────────────────────────────────────────────────────────
-// async function envoyerReponse(phone, texte) {
-//   log('INFO', 'WHATSAPP', `Envoi réponse à ${phone} — ${texte.length} caractères`)
-
-//   try {
-//     await axios.post(
-//       `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-//       {
-//         messaging_product: 'whatsapp',
-//         to: phone,
-//         type: 'text',
-//         text: { body: texte }
-//       },
-//       {
-//         headers: {
-//           Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-//           'Content-Type': 'application/json'
-//         }
-//       }
-//     )
-//     log('INFO', 'WHATSAPP', `Réponse envoyée à ${phone}`)
-//   } catch (err) {
-//     log('ERROR', 'WHATSAPP', `Échec envoi réponse à ${phone}`, err.message)
-//     if (err.response?.data) {
-//       log('ERROR', 'WHATSAPP', `Détail erreur Meta`, err.response.data)
-//     }
-//     throw err
-//   }
-// }
-
-
-// ─────────────────────────────────────────────────────────────
-// parserReponse — détecte le type de réponse et parse
-//
-// Retourne :
-//   { type: 'text', texte: string }
-//   { type: 'media', data: object }
-// ─────────────────────────────────────────────────────────────
-// function parserReponse(reponseTexte) {
-//   const reponse = reponseTexte.trim()
-
-//   if (reponse.startsWith('TEXT:')) {
-//     const texte = reponse.slice(5).trim()
-//     log('INFO', 'PARSER', `Type TEXT — ${texte.length} caractères`)
-//     return { type: 'text', texte }
-//   }
-
-//   if (reponse.startsWith('MEDIA:')) {
-//     const jsonBrut = reponse.slice(6).trim()
-//     try {
-//       const data = JSON.parse(jsonBrut)
-//       log('INFO', 'PARSER', `Type MEDIA — ${data.medias?.length || 0} groupe(s)`)
-//       return { type: 'media', data }
-//     } catch (err) {
-//       log('ERROR', 'PARSER', `JSON MEDIA invalide — fallback texte`, err.message)
-//       log('ERROR', 'PARSER', `JSON brut reçu`, jsonBrut.substring(0, 200))
-//       return { type: 'text', texte: jsonBrut }
-//     }
-//   }
-
-//   // Fallback — Gemini n'a pas respecté le format
-//   log('WARN', 'PARSER', `Format non reconnu — traité comme texte brut`)
-//   return { type: 'text', texte: reponse }
-// }
-
-// ─────────────────────────────────────────────────────────────
-// envoyerTexte — envoie un message texte simple
-// ─────────────────────────────────────────────────────────────
-// async function envoyerTexte(phone, texte) {
-//   if (!texte || !texte.trim()) return
-//   log('INFO', 'WHATSAPP', `Envoi texte à ${phone} — ${texte.length} caractères`)
-//   try {
-//     await axios.post(
-//       `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-//       {
-//         messaging_product: 'whatsapp',
-//         to: phone,
-//         type: 'text',
-//         text: { body: texte.trim() }
-//       },
-//       {
-//         headers: {
-//           Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-//           'Content-Type': 'application/json'
-//         }
-//       }
-//     )
-//     log('INFO', 'WHATSAPP', `Texte envoyé à ${phone}`)
-//   } catch (err) {
-//     log('ERROR', 'WHATSAPP', `Échec envoi texte`, err.message)
-//     if (err.response?.data) log('ERROR', 'WHATSAPP', `Détail Meta`, err.response.data)
-//     throw err
-//   }
-// }
+async function rangerFichierClient({ phone, base64, mimeType }) {
+  try {
+    const reponse = await axios.post(
+      `${process.env.GESTIONNAIRE_FICHIER_URL}/ranger-fichier`,
+      { phone, base64, mimeType }
+    )
+    if (reponse.data.success) {
+      log('INFO', 'STOCKAGE', `Média rangé — reference: ${reponse.data.reference}`)
+      return reponse.data.reference
+    }
+    log('WARN', 'STOCKAGE', `Rangement échoué côté service`, reponse.data.erreur)
+    return null
+  } catch (err) {
+    log('ERROR', 'STOCKAGE', `Échec appel gestionnaire-fichier — non bloquant`, err.message)
+    return null
+  }
+}
 
 async function envoyerTexte(phone, texte) {
   if (!texte || !texte.trim()) return null
@@ -304,69 +229,6 @@ async function envoyerImage(phone, imageInfo) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// envoyerReponse — point d'entrée principal
-//
-// Parse la réponse de l'agent et envoie texte + images
-// dans le bon ordre selon le format TEXT: ou MEDIA:
-// ─────────────────────────────────────────────────────────────
-// async function envoyerReponse(phone, reponseTexte) {
-//   log('INFO', 'WHATSAPP', `=== Début envoi réponse à ${phone} ===`)
-
-//   const parsed = parserReponse(reponseTexte)
-
-//   // ── CAS 1 : Texte simple ──────────────────────────────────
-//   if (parsed.type === 'text') {
-//     await envoyerTexte(phone, parsed.texte)
-//     log('INFO', 'WHATSAPP', `=== Envoi texte terminé ===`)
-//     return
-//   }
-
-//   // ── CAS 2 : Media ─────────────────────────────────────────
-//   const { data } = parsed
-
-//   // avant_bloc_media
-//   if (data.avant_bloc_media?.trim()) {
-//     await envoyerTexte(phone, data.avant_bloc_media)
-//   }
-
-//   // Parcourir chaque bloc media
-//   for (const bloc of (data.medias || [])) {
-
-//     // intro du bloc
-//     if (bloc.intro?.trim()) {
-//       await envoyerTexte(phone, bloc.intro)
-//     }
-
-//     // Images du bloc
-//     for (const imageInfo of (bloc.images || [])) {
-//       await envoyerImage(phone, imageInfo)
-//     }
-
-//     // conclusion du bloc
-//     if (bloc.conclusion?.trim()) {
-//       await envoyerTexte(phone, bloc.conclusion)
-//     }
-//   }
-
-//   // apres_bloc_media
-//   if (data.apres_bloc_media?.trim()) {
-//     await envoyerTexte(phone, data.apres_bloc_media)
-//   }
-
-//   log('INFO', 'WHATSAPP', `=== Envoi media terminé pour ${phone} ===`)
-// }
-
-// ─────────────────────────────────────────────────────────────
-// traiterJob — traite un job BullMQ
-//
-// Structure d'un job :
-//   { phone, type, content?, mediaId?, mimeType?, texte? }
-//
-//   type='text'  → content = texte du client
-//   type='image' → mediaId = id Meta, mimeType, texte? = légende
-//   type='audio' → mediaId = id Meta, mimeType
-// ─────────────────────────────────────────────────────────────
 async function traiterJob(job) {
   const { phone, type, content, mediaId, mimeType, texte,defaultName,id_message  } = job.data
   
@@ -392,11 +254,18 @@ async function traiterJob(job) {
       // Image — téléchargement requis
       log('INFO', 'WORKER', `Message image — téléchargement depuis Meta`)
       const media = await telechargerMedia(mediaId)
+
+      // ───────────── AJOUT (Flux A) ─────────────
+      // Rangement SYSTÉMATIQUE, avant tout appel à l'agent
+      const reference = await rangerFichierClient({ phone, base64: media.base64, mimeType: media.mimeType })
+      // ───────────── FIN AJOUT ─────────────
+
       message = {
         type: 'image',
         base64: media.base64,
         mimeType: media.mimeType,
-        texte: texte || ''
+        texte: texte || '',
+        reference
       }
       log('INFO', 'WORKER', `Image prête — mimeType: ${media.mimeType}`)
 
@@ -404,13 +273,18 @@ async function traiterJob(job) {
       // Audio — téléchargement requis
       log('INFO', 'WORKER', `Message audio — téléchargement depuis Meta`)
       const media = await telechargerMedia(mediaId)
+
+      // ───────────── AJOUT (Flux A) ─────────────
+      const reference = await rangerFichierClient({ phone, base64: media.base64, mimeType: media.mimeType })
+      // ───────────── FIN AJOUT ─────────────
+
       message = {
         type: 'audio',
         base64: media.base64,
-        mimeType: media.mimeType
+        mimeType: media.mimeType,
+        reference
       }
       log('INFO', 'WORKER', `Audio prêt — mimeType: ${media.mimeType}`)
-
     } else {
       log('WARN', 'WORKER', `Type de message inconnu : ${type} — traité comme texte`)
       message = content || ''
