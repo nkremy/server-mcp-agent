@@ -597,6 +597,14 @@ export async function traiterMessage({ phone, message , defaultName , id_message
         ? element.content
         : `[image] ${element.legende || ''}`.trim()
 
+      // ───────────── AJOUT (Flux B) ─────────────
+      // La référence produit est déjà contenue dans original_file,
+      // format "REF/nom_fichier.jpg" — on l'extrait ici, rien de plus.
+      const referenceProduit = element.type === 'image' && element.original_file
+        ? element.original_file.split('/')[0]
+        : null
+      // ───────────── FIN AJOUT ─────────────
+
       const saveModel = await appelOutil(mcpClient, 'sauvegarderMessage', {
         phone,
         session_id,
@@ -604,7 +612,7 @@ export async function traiterMessage({ phone, message , defaultName , id_message
         content: contenuSauvegarde,
         type: element.type,
         reference_fichier: element.type === 'image' ? element.original_file : null,
-        reference_produit: null
+        reference_produit: referenceProduit
       }, phone)
 
       elementsASauvegarder.push({ ...element, id_interne: saveModel.id })
