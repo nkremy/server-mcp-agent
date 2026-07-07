@@ -13,6 +13,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { fileURLToPath } from 'url'
 import path from 'path'
+import axios from 'axios'
 import { appellerModele } from './mesure-tokens.js'
 import 'dotenv/config'
 
@@ -170,6 +171,37 @@ function aplatirReponse(reponseTexte) {
 // ───────────── FIN AJOUT ─────────────
 
 
+// ───────────── AJOUT (Flux C, point 6) ─────────────
+// recupererBlocsSessionsInconnues — à CHAQUE tour, rebalaye TOUS les
+// replies déjà faits dans la session actuelle (pas seulement le
+// dernier message), et retourne un bloc par session inconnue trouvée,
+// dédupliqué. Rien n'est stocké de façon permanente : c'est reconstruit
+// intégralement à chaque appel, tant que la session actuelle est en cours.
+// async function recupererBlocsSessionsInconnues(session_id_courante, sessionsConnues, mcpClient, phone) {
+//   const { cibles } = await appelOutil(mcpClient, 'getCiblesRepliesSession', { session_id: session_id_courante }, phone)
+//   if (!cibles || cibles.length === 0) return []
+
+//   const sessionsInconnuesVues = new Set()
+//   const blocs = []
+
+//   for (const idWhatsappCible of cibles) {
+//     const resolution = await appelOutil(mcpClient, 'resoudreMessageReplique', { id_whatsapp: idWhatsappCible }, phone)
+//     if (!resolution.found) continue
+
+//     const classification = classifierSessionCible(resolution.message.session_id, session_id_courante, sessionsConnues)
+//     if (classification.statut !== 'inconnue') continue
+
+//     if (sessionsInconnuesVues.has(resolution.message.session_id)) continue
+//     sessionsInconnuesVues.add(resolution.message.session_id)
+
+//     const bloc = await construireBlocSessionInconnue(resolution.message.session_id, mcpClient, phone)
+//     if (bloc) blocs.push(bloc)
+//   }
+
+//   return blocs
+// }
+// ───────────── FIN AJOUT ─────────────
+
 // ─────────────────────────────────────────────────────────────
 // creerClientMCP — ouvre une connexion stdio vers le serveur MCP
 // ─────────────────────────────────────────────────────────────
@@ -248,16 +280,16 @@ function construireContenu(message) {
 function construireResume(message) {
   if (typeof message === 'string') return { content: message, type: 'text' }
 
-  const prefixes = {
-    image: '[image]',
-    audio: '[audio]'
-  }
-  const prefix = prefixes[message.type] || ''
+  // const prefixes = {
+  //   image: '[image]',
+  //   audio: '[audio]'
+  // }
+  // const prefix = prefixes[message.type] || ''
   const texte  = message.texte ? ` ${message.texte}` : ''
 
   // Priorité type : image > audio > text
   return {
-    content: `${prefix}${texte}`.trim(),
+    content: message.type === "image" ? `legende : ${texte}`.trim() : '',
     type: message.type || 'text'
   }
 }
@@ -305,6 +337,133 @@ function convertirOutilsMCPversGemini(tools) {
 }
 
 
+// ───────────── AJOUT (Flux C, point 3) ─────────────
+// classifierSessionCible — compare la session ciblée par un reply
+// aux sessions déjà connues à ce tour (session actuelle + N dernières
+// injectées). Fonction pure, aucun accès base de données : tout est
+// déjà disponible en mémoire à ce stade du traitement.
+// function classifierSessionCible(session_id_cible, session_id_courante, sessionsConnues) {
+//   if (session_id_cible === session_id_courante) {
+//     return { statut: 'actuelle' }
+//   }
+//   const trouvee = sessionsConnues.find(s => s.session_id === session_id_cible)
+//   if (trouvee) {
+//     return { statut: 'connue', session: trouvee }
+//   }
+//   return { statut: 'inconnue' }
+// }
+// ───────────── FIN AJOUT ─────────────
+
+
+
+// ───────────── AJOUT (Flux C, point 4) ─────────────
+const EXTENSIONS_VERS_MIME = {
+  jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+  ogg: 'audio/ogg', mp3: 'audio/mpeg', amr: 'audio/amr', mp4: 'video/mp4'
+}
+
+function deviverMimeType(reference) {
+  const extension = reference.split('.').pop()
+  return EXTENSIONS_VERS_MIME[extension] || 'application/octet-stream'
+}
+
+// retrouverFichierClient — appelle le service gestionnaire-fichier pour
+// récupérer un média du client, UNIQUEMENT nécessaire pour les images
+// (l'audio utilise déjà sa transcription sauvegardée, pas d'appel réseau).
+async function retrouverFichierClient({ reference }) {
+  try {
+    const reponse = await axios.post(
+      `${process.env.GESTIONNAIRE_FICHIER_URL}/retrouver-fichier`,
+      { reference }
+    )
+    return reponse.data
+  } catch (err) {
+    log('ERROR', 'STOCKAGE', `Échec récupération fichier pour reply — non bloquant`, err.message)
+    return { success: false }
+  }
+}
+
+// construireContenuReplique — construit le contenu à injecter pour
+// "ce à quoi le client répond", selon les 5 cas réels (qui a envoyé
+// x quel type). Ne s'occupe PAS de savoir si la session est connue —
+// ça, c'est le point 5.
+async function construireContenuReplique(messageResolu, mcpClient, phone,sessionsContexteLLM) {
+  const { role, type, content, reference_fichier, reference_produit , session_id } = messageResolu
+  let sessionConcerne = sessionsContexteLLM.find(item => item.session_id === session_id);
+
+  if(!sessionConcerne){
+    //LA SESSION N'EST PAS ENCORE CONNU DU LLM IL FAUT L'AJOUTER
+    const sessionData = await appelOutil(mcpClient, 'getSessionParId', { session_id }, phone)
+    sessionData.session_id = session_id;
+    sessionsContexteLLM.push({
+      session_id ,
+      debut_session:sessionData.debut_session,
+      fin_session:sessionData.fin_session,
+      resume:sessionData.resume,
+    })
+
+    sessionConcerne = sessionData;
+  }
+
+  if (role === 'user' && type === 'text') {
+    return { parts: [{ text: `[SESSION CONCERNE : date debut : ${sessionConcerne.debut_session}][Le client répond à son propre message : "${content}"]` }] }
+  }
+
+  if (role === 'user' && type === 'image') {
+    const parts = [{ text: `[SESSION CONCERNE : date debut : ${sessionConcerne.debut_session}][Le client répond à une image qu'il avait envoyée${content ? ' (légende : ' + content + ')' : ''}]` }]
+    if (reference_fichier) {
+      const fichier = await retrouverFichierClient({ reference: reference_fichier })
+      if (fichier.success) {
+        parts.push({ inlineData: { mimeType: deviverMimeType(reference_fichier), data: fichier.base64 } })
+      }
+    }
+    return { parts }
+  }
+
+  if (role === 'user' && type === 'audio') {
+    return { parts: [{ text: `[SESSION CONCERNE : date debut : ${sessionConcerne.debut_session}][Le client répond à un audio qu'il avait envoyé, transcription : "${content}"]` }] }
+  }
+
+  if (role === 'model' && type === 'text') {
+    return { parts: [{ text: `[SESSION CONCERNE : date debut : ${sessionConcerne.debut_session}][Le client répond à votre message : "${content}"]` }] }
+  }
+
+  if (role === 'model' && type === 'image' && reference_produit) {
+    const produitData = await appelOutil(mcpClient, 'chercherProduit', { termes: [reference_produit] }, phone)
+    if (produitData.found && produitData.produits?.length) {
+      const p = produitData.produits[0]
+      return { parts: [{ text: `[SESSION CONCERNE : date debut : ${sessionConcerne.debut_session}][Le client répond à l'image du produit ${p.ref} - ${p.label}, prix: ${p.price_ttc}, description: ${p.description}]` }] }
+    }
+    return { parts: [{ text: `[Le client répond à une image de produit envoyée précédemment (référence ${reference_produit}, détails indisponibles)]` }] }
+  }
+
+  return { parts: [{ text: `[Le client répond à un message précédent : "${content || ''}"]` }] }
+}
+// ───────────── FIN AJOUT ─────────────
+
+
+// ───────────── AJOUT (Flux C, point 5) ─────────────
+// construireBlocSessionInconnue — quand un reply cible une session
+// qui n'est ni la session actuelle, ni parmi les N dernières injectées,
+// on va chercher cette session précise pour l'ajouter EN PLUS, juste
+// pour ce tour (jamais enregistré, reconstruit à chaque fois).
+async function construireBlocSessionInconnue(session_id, mcpClient, phone) {
+  const sessionData = await appelOutil(mcpClient, 'getSessionParId', { session_id }, phone)
+
+  if (!sessionData.found) {
+    return null // rien à affirmer sur une session introuvable
+  }
+
+  if (!sessionData.resume) {
+    // Session existante mais sans résumé disponible (résumé en échec ou en cours)
+    return `[Session du ${formatDateFr(sessionData.debut_session)} — résumé pas encore disponible pour cette session]`
+  }
+
+  return `[Session du ${formatDateFr(sessionData.debut_session)} au ${formatDateFr(sessionData.fin_session)} : ${sessionData.resume}]`
+}
+// ───────────── FIN AJOUT ─────────────
+
+
 // ─────────────────────────────────────────────────────────────
 // traiterMessage — fonction principale exportée
 //
@@ -350,11 +509,20 @@ export async function traiterMessage({ phone, message , defaultName , id_message
       })
     }
 
+    //--- CE TABLEAU REPRESENTE TOUTES LES SESSIONS QUI DOIVENT ETRE CONNUS DU LLM
+    // Ce tableau accumulera toutes les sessions (initiales + découvertes via les replies)
+    let sessionsContexteLLM = [];
+
     // ───────────── AJOUT (étape 3b du plan) ─────────────
     const sessionData = await appelOutil(mcpClient, 'getOuCreerSessionActive', { phone }, phone)
     const session_id = sessionData.session_id
     log('INFO', 'AGENT', `Session active : ${session_id} (créée: ${sessionData.creee})`)
     // ───────────── FIN AJOUT ─────────────
+
+    //--- AJOUTER DE LA SESSION ACTUEL DANS LA LISTE DES SESSION DEVANT ETRE CONNUS PAR LE LLM
+    // POUR LE MOMENT ON SUPOSE QUE DURANT getOuCreerSessionActive IL Y A JAMAIS D'ERREUR
+    sessionsContexteLLM.push({session_id ,debut_session:sessionData.debut_session,status : `c'est la session actuel`})
+
 
     // ####
     //-- Ajouter des informations indispensable dans le systeme prompt (telephone,nom)
@@ -367,85 +535,8 @@ export async function traiterMessage({ phone, message , defaultName , id_message
     `
 
 
-    // ── 3. Chargement historique ──────────────────────────────
-    log('INFO', 'AGENT', `Chargement historique pour ${phone}`)
-    // const historiqueData = await appelOutil(
-    //   mcpClient, 'getHistorique', { phone, limit: 15 }, phone
-    // )
-    const historiqueData = await appelOutil(
-      mcpClient, 'getHistorique', { session_id, limit: 15 }, phone
-    )
-    log('INFO', 'AGENT', `${historiqueData.total} messages dans l'historique`)
-
-    // ── 4. Construction du contexte ───────────────────────────
-    log('INFO', 'AGENT', `Construction du contexte pour ${phone}`)
-    const contents = []
-
-    // ───────────── MODIFIÉ (étape 3c, généralisé) ─────────────
-    // Injection des N derniers résumés de sessions précédentes.
-    // NB_RESUMES_A_INJECTER : ajuste cette valeur ici selon tes besoins
-    // (2, 3, 5...) — c'est le seul endroit à modifier.
-    const NB_RESUMES_A_INJECTER = 3
-    const derniersResumes = await appelOutil(
-      mcpClient, 'getDerniersResumesSessions',
-      { phone, session_id_courante: session_id, nombre: NB_RESUMES_A_INJECTER },
-      phone
-    )
-    if (derniersResumes.found && derniersResumes.resumes?.length) {
-      // Injection du plus ancien au plus récent (le plus récent reste
-      // le plus "proche" dans le contexte, effet de récence naturel).
-      const resumesOrdreChronologique = [...derniersResumes.resumes].reverse()
-      for (const resume of resumesOrdreChronologique) {
-        contents.push({
-          role: 'user',
-          parts: [{ text: `[Résumé d'une session précédente : ${resume}]` }]
-        })
-        contents.push({
-          role: 'model',
-          parts: [{ text: 'Compris, je prends en compte ce contexte.' }]
-        })
-      }
-      log('INFO', 'AGENT', `${resumesOrdreChronologique.length} résumé(s) de session(s) précédente(s) injecté(s)`)
-    }
-    // ───────────── FIN MODIFIÉ ─────────────
-
-    //----- pas besoin de faire cette a cette endroit
-    // Résumé glissant si disponible
-    // if (profilData.found && profilData.profil?.resume) {
-    //   log('INFO', 'AGENT', `Injection résumé glissant`)
-    //   contents.push({
-    //     role: 'user',
-    //     parts: [{ text: `[Résumé des échanges précédents : ${profilData.profil.resume}]` }]
-    //   })
-    //   contents.push({
-    //     role: 'model',
-    //     parts: [{ text: 'Compris, je prends en compte ce contexte.' }]
-    //   })
-    // }
-
-    // Historique des 15 derniers messages ce la session active uniquement
-    for (const msg of historiqueData.messages) {
-      // Reconstruction selon le type sauvegardé
-      let parts
-      if (msg.type === 'image') {
-        parts = [{ text: `[Le client a envoyé une image : ${msg.content}]` }]
-      } else if (msg.type === 'audio') {
-        parts = [{ text: `[Le client a envoyé un audio : ${msg.content}]` }]
-      } else {
-        parts = [{ text: msg.content }]
-      }
-      contents.push({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts
-      })
-    }
-
-    // Message actuel du client
-    const contenuActuel = construireContenu(message)
-    contents.push(contenuActuel)
-    log('INFO', 'AGENT', `Contexte construit — ${contents.length} éléments au total`)
-
-    // ── 5. Sauvegarde message client ──────────────────────────
+  //CHARGEMENT IMPORTANT : MAINTENANT , ON SAUVEGARDE LE MESSAGE AVANT DE CHARGE L'HISTRIQUE
+  // ── 3. Sauvegarde message client ──────────────────────────
     let { content: contenuSave, type: typeSave } = construireResume(message)
     log('INFO', 'AGENT', `Sauvegarde message client [${typeSave}] : ${contenuSave.substring(0, 60)}`)
     // ───────────── MODIFIÉ (Flux A) ─────────────
@@ -476,6 +567,155 @@ export async function traiterMessage({ phone, message , defaultName , id_message
     }, phone)
     log('INFO', 'AGENT', `Message client sauvegardé — nb_messages: ${saveUser.nb_messages}`)
     // ───────────── FIN MODIFIÉ ─────────────
+
+
+
+
+    // ── 4. Chargement historique ──────────────────────────────
+    log('INFO', 'AGENT', `Chargement historique pour ${phone}`)
+    // const historiqueData = await appelOutil(
+    //   mcpClient, 'getHistorique', { phone, limit: 15 }, phone
+    // )
+    const historiqueData = await appelOutil(
+      mcpClient, 'getHistorique', { session_id, limit: 15 }, phone
+    )
+    log('INFO', 'AGENT', `${historiqueData.total} messages dans l'historique`)
+
+    // ── 5. Construction du contexte ───────────────────────────
+    log('INFO', 'AGENT', `Construction du contexte pour ${phone}`)
+    const contents = []
+
+    // ───────────── MODIFIÉ (étape 3c, généralisé) ─────────────
+    // Injection des N derniers résumés de sessions précédentes.
+    // NB_RESUMES_A_INJECTER : ajuste cette valeur ici selon tes besoins
+    // (2, 3, 5...) — c'est le seul endroit à modifier.
+   // ───────────── MODIFIÉ (Flux C, point 1) ─────────────
+    // Injection des N derniers résumés de sessions précédentes,
+    // avec dates de début/fin (nécessaire pour le point 6 du plan :
+    // comparer une session cible à l'ensemble des sessions "connues").
+    const NB_RESUMES_A_INJECTER = 3
+    const derniersResumes = await appelOutil(
+      mcpClient, 'getDerniersResumesSessions',
+      { phone, session_id_courante: session_id, nombre: NB_RESUMES_A_INJECTER },
+      phone
+    )
+
+    
+    //------ AJOUTER LES SESSION QUI PRECENDENT DIRECTEMENT LA SESSION COURANTE DANS LE TABLEAU DES SESSION DEVANT ETRE CONNU PAR LE LLM
+    if (derniersResumes.found && derniersResumes.sessions?.length) {
+      // const sessionsOrdreChronologique = [...derniersResumes.sessions].reverse()
+      // On remplit notre accumulateur avec les 3 sessions initiales
+      sessionsContexteLLM.push(...derniersResumes.sessions);
+      log('INFO', 'AGENT', `${sessionsOrdreChronologique.length} session(s) précédente(s) injectée(s)`)
+    }
+
+    // ───────────── FIN MODIFIÉ ─────────────
+    // ───────────── FIN MODIFIÉ ─────────────
+
+
+
+    // ───────────── AJOUT (Flux C, point 1) ─────────────
+    function formatDateFr(iso) {
+      return new Date(iso).toLocaleString('fr-FR', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      })
+    }
+    // ───────────── FIN AJOUT ─────────────
+
+    //XXXXXXXXXXX  WARNING ZONE A DEMOLIRE
+    // ───────────── AJOUT (Flux C, point 8) ─────────────
+    // const sessionsConnues = (derniersResumes.found && derniersResumes.sessions) ? derniersResumes.sessions : []
+    // const blocsInconnuesDejaInjectes = new Set()
+
+    // // 8a. Le message entrant est lui-même un reply
+    // if (repond_a_id_whatsapp) {
+    //   const resolution = await appelOutil(mcpClient, 'resoudreMessageReplique', { id_whatsapp: repond_a_id_whatsapp }, phone)
+
+    //   if (resolution.found) {
+    //     const classification = classifierSessionCible(resolution.message.session_id, session_id, sessionsConnues)
+
+    //     const contenuReplique = await construireContenuReplique(resolution.message, mcpClient, phone,sessionsContexteLLM)
+    //     contents.push({ role: 'user', parts: contenuReplique.parts })
+    //     contents.push({ role: 'model', parts: [{ text: 'Compris, je prends en compte ce contexte.' }] })
+
+    //     if (classification.statut === 'inconnue') {
+    //       const bloc = await construireBlocSessionInconnue(resolution.message.session_id, mcpClient, phone)
+    //       if (bloc) {
+    //         contents.push({ role: 'user', parts: [{ text: bloc }] })
+    //         contents.push({ role: 'model', parts: [{ text: 'Compris, je prends en compte ce contexte.' }] })
+    //         blocsInconnuesDejaInjectes.add(bloc)
+    //       }
+    //     }
+    //   } else {
+    //     log('WARN', 'AGENT', `Reply du message entrant introuvable (id_whatsapp: ${repond_a_id_whatsapp})`)
+    //   }
+    // }
+
+    // 8b. Systématiquement, à chaque tour : rebalayage de TOUS les replies
+    // déjà faits dans la session actuelle, même si le message actuel n'est pas un reply
+    // const blocsSessionsInconnues = await recupererBlocsSessionsInconnues(session_id, sessionsConnues, mcpClient, phone)
+    // for (const bloc of blocsSessionsInconnues) {
+    //   if (blocsInconnuesDejaInjectes.has(bloc)) continue
+    //   contents.push({ role: 'user', parts: [{ text: bloc }] })
+    //   contents.push({ role: 'model', parts: [{ text: 'Compris, je prends en compte ce contexte.' }] })
+    // }
+    // ───────────── FIN AJOUT ─────────────
+// END WARNING . FIN DE LA ZONE A DEMOLIRE
+
+
+    // Historique des 15 derniers messages ce la session active uniquement
+    for (const msg of historiqueData.messages) {
+      // Reconstruction selon le type sauvegardé
+      let parts 
+      if (msg.type === 'image') {
+        // parts = [{ text: `[Le client a envoyé une image : ${msg.content}]` }]
+        //ICI C'EST UNE IMAGES
+        if(msg.role==="user"){
+          parts = []
+          //C'EST UNE IMAGES QUI A ETE ENVOYE PAR LE CLIENT . IL FAUT REDONNE L'IMAGE AU LLM 
+          //telechargement de l'image depuis le gestionnaire de fichier
+          const fichier = await retrouverFichierClient({ reference: reference_fichier })
+          parts.push({ inlineData: { mimeType: fichier.mimeType, data: fichier.base64 } })
+          if(msg?.content && msg?.content?.length !== 0){
+            //alors il y a une legende sur cette image on l'ajoute au par
+            parts.push({ text: `legence de l'image : ${mgs?.content}` })
+          }
+        }else{
+          //C'EST UNE IMAGES QUI A ETE ENVOYER PAR LE LLM PAS DESOIN DE REDONNER L'IMAGES AU LLM.IL AUT JUSQU'E QU'IL SACHE QU'IL A ENVOYER UNE IMAGES ET A QUOI FAISAIT REFERENCE CETTE IMAGES
+          parts = [{ text: `[image] le LLM a envoyer une images qui fait reference au produit ayant la 
+            la reference : ${msg?.reference_produit}
+            ${(msg?.content?.length !== 0 && msg?.content) ? 'legence de l\'image : ' + mgs?.content : '' }` }]
+        }
+      } else if (msg.type === 'audio') {
+        parts = [{ text: `[Le client a envoyé un audio : ${msg.content}]` }]
+      } else {
+        parts = [{ text: msg.content }]
+      }
+
+      //determiner si le message sible un autre message et ajouter les informations du message sible au context pour que le llm comprend
+      if(msg?.repond_a_id_whatsapp && msg?.repond_a_id_whatsapp?.trim()?.length !== 0 ){
+        //le messable actuel sible un autre message 
+        let result =  await construireContenuReplique(msg,mcpClient,phone,sessionsContexteLLM);
+        parts.unshift(...result.parts);
+      }
+
+      contents.push({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts 
+      })
+    }
+
+    // Message actuel du client
+    // const contenuActuel = construireContenu(message)
+    // contents.push(contenuActuel)
+    // log('INFO', 'AGENT', `Contexte construit — ${contents.length} éléments au total`)
+
+    
+    //ajout des sessions dans le system prompt
+    SYSTEM_PROMPT +=`
+                voici la liste des session important pour bien comprendre
+                ${JSON.stringify(sessionsContexteLLM)}
+    `
 
     // ── 6. Boucle agent Gemini ────────────────────────────────
     log('INFO', 'GEMINI', `Premier appel Gemini pour ${phone}`)

@@ -58,7 +58,7 @@ export async function sauvegarderProfil({ phone, nom, dolibarr_id, preferences, 
 export async function getHistorique({ phone, session_id, limit = 15 }) {
   const { data, error } = await supabase
     .from('historique_messages')
-    .select('role, content, type, timestamp')
+    .select('*')
     .eq('session_id', session_id)
     .order('timestamp', { ascending: false })
     .limit(limit)
@@ -160,7 +160,7 @@ export async function mettreAJourIdWhatsapp({ id, id_whatsapp }) {
 export async function getOuCreerSessionActive({ phone }) {
   const { data: sessionExistante, error: erreurLecture } = await supabase
     .from('sessions')
-    .select('id')
+    .select('id,debut_session')
     .eq('phone', phone)
     .eq('statut', 'active')
     .order('debut_session', { ascending: false })
@@ -172,20 +172,20 @@ export async function getOuCreerSessionActive({ phone }) {
   }
 
   if (sessionExistante) {
-    return { success: true, session_id: sessionExistante.id, creee: false }
+    return { success: true, session_id: sessionExistante.id, creee: false ,debut_session : nouvelleSession.debut_session }
   }
 
   const { data: nouvelleSession, error: erreurCreation } = await supabase
     .from('sessions')
     .insert({ phone, statut: 'active' })
-    .select('id')
+    .select('id,debut_session')
     .single()
 
   if (erreurCreation) {
     return { success: false, erreur: erreurCreation.message }
   }
 
-  return { success: true, session_id: nouvelleSession.id, creee: true }
+  return { success: true, session_id: nouvelleSession.id, creee: true , debut_session : nouvelleSession.debut_session}
 }
 // ───────────── FIN AJOUT ─────────────
 
@@ -260,7 +260,7 @@ export async function resumerHistorique({ session_id }) {
 export async function getDerniersResumesSessions({ phone, session_id_courante, nombre = 1 }) {
   const { data, error } = await supabase
     .from('sessions')
-    .select('resume, fin_session')
+    .select('id, resume, debut_session, fin_session')
     .eq('phone', phone)
     .eq('statut', 'terminee')
     .neq('id', session_id_courante)
@@ -268,7 +268,72 @@ export async function getDerniersResumesSessions({ phone, session_id_courante, n
     .order('fin_session', { ascending: false })
     .limit(nombre)
 
-  if (error || !data || data.length === 0) return { found: false, resumes: [] }
-  return { found: true, resumes: data.map(s => s.resume) }
+  if (error || !data || data.length === 0) return { found: false, sessions: [] }
+
+  return {
+    found: true,
+    sessions: data.map(s => ({
+      session_id: s.id,
+      debut_session: s.debut_session,
+      fin_session: s.fin_session,
+      resume: s.resume
+    }))
+  }
+}
+// ───────────── FIN AJOUT ─────────────
+
+// ───────────── AJOUT (Flux C, point 2) ─────────────
+// resoudreMessageReplique — retrouve la ligne historique_messages
+// visée par un reply, à partir de son id_whatsapp. AUCUNE restriction
+// de session ni de phone : l'id_whatsapp est unique en lui-même,
+// et rien n'est jamais supprimé de historique_messages, donc la
+// recherche fonctionne peu importe l'ancienneté du message visé.
+export async function resoudreMessageReplique({ id_whatsapp }) {
+  if (!id_whatsapp) return { found: false }
+
+  const { data, error } = await supabase
+    .from('historique_messages')
+    .select('session_id, role, type, content, reference_fichier, reference_produit')
+    .eq('id_whatsapp', id_whatsapp)
+    .maybeSingle()
+
+  if (error || !data) return { found: false }
+
+  return { found: true, message: data }
+}
+// ───────────── FIN AJOUT ─────────────
+
+// ───────────── AJOUT (Flux C, point 5) ─────────────
+// getSessionParId — récupère une session précise par son id, pour
+// injecter dynamiquement une session "inconnue" ciblée par un reply.
+export async function getSessionParId({ session_id }) {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('id', session_id)
+    .maybeSingle()
+
+  if (error || !data) return { found: false }
+  return { found: true, ...data }
+}
+// ───────────── FIN AJOUT ─────────────
+
+
+// ───────────── AJOUT (Flux C, point 6) ─────────────
+// getCiblesRepliesSession — liste TOUTES les cibles de reply déjà
+// faites dans la session actuelle (dédupliquées). Appelée à CHAQUE
+// tour, pas seulement quand le nouveau message a lui-même un reply —
+// c'est ce qui garantit la continuité sur toute la durée de la session.
+export async function getCiblesRepliesSession({ session_id }) {
+  const { data, error } = await supabase
+    .from('historique_messages')
+    .select('repond_a_id_whatsapp')
+    .eq('session_id', session_id)
+    .not('repond_a_id_whatsapp', 'is', null)
+
+  if (error || !data) return { cibles: [] }
+
+  const cibles = [...new Set(data.map(m => m.repond_a_id_whatsapp))]
+  return { cibles }
 }
 // ───────────── FIN AJOUT ─────────────

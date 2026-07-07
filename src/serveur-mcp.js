@@ -18,7 +18,10 @@ import {
   sauvegarderMessage,
   resumerHistorique,
   getOuCreerSessionActive, // ───── AJOUT (étape 3a) ─────
-  getDerniersResumesSessions // ───── AJOUT (étape 3c) ─────
+  getDerniersResumesSessions, // ───── AJOUT (étape 3c) ─────
+  resoudreMessageReplique,
+  getSessionParId,
+  getCiblesRepliesSession
 } from './outils-supabase.js'
 
 import {
@@ -244,7 +247,8 @@ server.registerTool(
     Retourne moins que 'nombre' si moins de résumés existent.
     Usage interne — appelé par le code, pas par le modèle.
     Paramètres : phone, session_id_courante, nombre (défaut 1).
-    Retourne : { found: boolean, resumes: string[] } (du plus récent au plus ancien)`,
+    Retourne : { found: boolean, sessions: [{session_id, debut_session, fin_session, resume}] }
+    (du plus récent au plus ancien)`,
     inputSchema: {
       phone: z.string().describe('Numéro WhatsApp'),
       session_id_courante: z.string().describe('Identifiant de la session active actuelle, à exclure'),
@@ -585,3 +589,67 @@ main().catch(err => {
   console.error('[MCP] Erreur fatale au démarrage :', err)
   process.exit(1)
 })
+
+
+server.registerTool(
+  'resoudreMessageReplique',
+  {
+    title: 'Résoudre le message ciblé par un reply',
+    description: `Retrouve la ligne historique_messages visée par un reply, à partir de son id_whatsapp.
+    Aucune restriction de session : fonctionne peu importe l'ancienneté du message visé.
+    Usage interne — appelé par le code, pas par le modèle.
+    Paramètres : id_whatsapp.
+    Retourne : { found: boolean, message?: {session_id, role, type, content, reference_fichier, reference_produit} }`,
+    inputSchema: {
+      id_whatsapp: z.string().describe('Id du message WhatsApp visé par le reply')
+    }
+  },
+  async ({ id_whatsapp }) => {
+    const resultat = await resoudreMessageReplique({ id_whatsapp })
+    return {
+      content: [{ type: 'text', text: JSON.stringify(resultat) }]
+    }
+  }
+)
+
+server.registerTool(
+  'getSessionParId',
+  {
+    title: 'Obtenir une session précise par son id',
+    description: `Récupère les dates et le résumé d'une session précise, à partir de son id.
+    Usage interne — sert à injecter dynamiquement une session "inconnue" ciblée par un reply.
+    Paramètres : session_id.
+    Retourne : { found: boolean, debut_session?, fin_session?, resume?, statut? }`,
+    inputSchema: {
+      session_id: z.string().describe('Identifiant de la session')
+    }
+  },
+  async ({ session_id }) => {
+    const resultat = await getSessionParId({ session_id })
+    return {
+      content: [{ type: 'text', text: JSON.stringify(resultat) }]
+    }
+  }
+)
+
+
+server.registerTool(
+  'getCiblesRepliesSession',
+  {
+    title: 'Obtenir les cibles de reply de la session actuelle',
+    description: `Liste toutes les cibles de reply (id_whatsapp visés) déjà faites dans une session,
+    dédupliquées. Appelée à chaque tour pour garantir la continuité du contexte.
+    Usage interne — appelé par le code, pas par le modèle.
+    Paramètres : session_id.
+    Retourne : { cibles: string[] }`,
+    inputSchema: {
+      session_id: z.string().describe('Identifiant de la session actuelle')
+    }
+  },
+  async ({ session_id }) => {
+    const resultat = await getCiblesRepliesSession({ session_id })
+    return {
+      content: [{ type: 'text', text: JSON.stringify(resultat) }]
+    }
+  }
+)

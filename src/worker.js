@@ -230,12 +230,12 @@ async function envoyerImage(phone, imageInfo) {
 }
 
 async function traiterJob(job) {
-  const { phone, type, content, mediaId, mimeType, texte,defaultName,id_message  } = job.data
+  const { phone, type, content, mediaId, mimeType, texte,defaultName,id_message ,repond_a_id_whatsapp } = job.data
   
   // ───────────── AJOUT (étape 2 du plan) ─────────────
   // Transport du reply capturé au webhook (étape 1). Pas encore utilisé
   // ici, juste transmis plus loin jusqu'à l'agent.
-  const { repond_a_id_whatsapp } = job.data
+  // const { repond_a_id_whatsapp } = job.data
   // ───────────── FIN AJOUT ─────────────
   
   log('INFO', 'WORKER', `=== Job reçu [${job.id}] — phone: ${phone} type: ${type} ===`)
