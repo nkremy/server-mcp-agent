@@ -713,10 +713,12 @@ export async function traiterMessage({ phone, message , defaultName , id_message
       let resolution = undefined;
       //determiner si le message sible un autre message et ajouter les informations du message sible au context pour que le llm comprend
       if(msg?.repond_a_id_whatsapp && msg?.repond_a_id_whatsapp?.trim()?.length !== 0 ){
-        console.log(`[message ${msg.id}] : type ${msg.type} c'est une images envoyer par l'utilisateur reply a une autre message ayant id : ${msg?.repond_a_id_whatsapp}`)
+        console.log(`[message ${msg.id}] : type ${msg.type}  reply a une autre message ayant id : ${msg?.repond_a_id_whatsapp}`)
         //msg est celui qui REPOND ; il faut d'abord résoudre le message CIBLÉ
         // log('INFO', 'REPLAY', `Message historique répond à ${msg.repond_a_id_whatsapp} — résolution en cours`)
         resolution = await appelOutil(mcpClient, 'resoudreMessageReplique', { id_whatsapp: msg.repond_a_id_whatsapp }, phone)
+        console.log('on recerche le message concerne par sont identifiant whatsapp qui est : ' + msg.repond_a_id_whatsapp );
+        console.log(`resultat : brut : ${JSON.stringify(resolution)}`)
         
         if (resolution.found) {
           console.log(`[message ${msg.id}] reply [message : ${resolution.message.id}] de type ${resolution.message.type} `)
@@ -729,6 +731,7 @@ export async function traiterMessage({ phone, message , defaultName , id_message
           
           // log('INFO', 'REPLAY', `Contexte replay injecté — sessions connues du LLM : ${sessionsContexteLLM.map(s => s.session_id).join(', ')}`)
         } else {
+          // console.log()
           // log('WARN', 'REPLAY', `Message cible introuvable pour id_whatsapp ${msg.repond_a_id_whatsapp} — replay ignoré`)
         }
       }
