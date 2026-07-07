@@ -745,13 +745,15 @@ export async function traiterMessage({ phone, message , defaultName , id_message
           =========================================================================================================
         
         \n\t\t`)
-
         if(resolution){
+          console.log(`
+                formet complet du message concerne. ${JSON.stringify(resolution)}
+            `)
           console.log(`\n
                 =========================================================================================================
                     information sur le message concerne : 
-                    -type : ${resolution.message.type}
-                    -content : ${resolution.message.content}
+                    -type : ${resolution?.message?.type}
+                    -content : ${resolution?.message?.content}
 
 
                     
