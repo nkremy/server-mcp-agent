@@ -538,7 +538,7 @@ export async function traiterMessage({ phone, message , defaultName , id_message
   //CHARGEMENT IMPORTANT : MAINTENANT , ON SAUVEGARDE LE MESSAGE AVANT DE CHARGE L'HISTRIQUE
   // ── 3. Sauvegarde message client ──────────────────────────
     let { content: contenuSave, type: typeSave } = construireResume(message)
-    log('INFO', 'AGENT', `Sauvegarde message client [${typeSave}] : ${contenuSave.substring(0, 60)}`)
+    // log('INFO', 'AGENT', `Sauvegarde message client [${typeSave}] : ${contenuSave.substring(0, 60)}`)
     // ───────────── MODIFIÉ (Flux A) ─────────────
     // let { content: contenuSave, type: typeSave } = construireResume(message)
 
@@ -615,11 +615,11 @@ export async function traiterMessage({ phone, message , defaultName , id_message
 
 
     // ───────────── AJOUT (Flux C, point 1) ─────────────
-    function formatDateFr(iso) {
-      return new Date(iso).toLocaleString('fr-FR', {
-        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-      })
-    }
+    // function formatDateFr(iso) {
+    //   return new Date(iso).toLocaleString('fr-FR', {
+    //     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    //   })
+    // }
     // ───────────── FIN AJOUT ─────────────
 
     //XXXXXXXXXXX  WARNING ZONE A DEMOLIRE

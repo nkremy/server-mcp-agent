@@ -158,9 +158,11 @@ export async function mettreAJourIdWhatsapp({ id, id_whatsapp }) {
 // Paramètres : phone
 // Retourne : { session_id, creee: boolean }
 export async function getOuCreerSessionActive({ phone }) {
+  console.error(`\n\n`);
+  console.error("[supabase test fonction getOuCreerSessionActive]")
   const { data: sessionExistante, error: erreurLecture } = await supabase
     .from('sessions')
-    .select('id,debut_session')
+    .select('*')
     .eq('phone', phone)
     .eq('statut', 'active')
     .order('debut_session', { ascending: false })
@@ -168,11 +170,12 @@ export async function getOuCreerSessionActive({ phone }) {
     .maybeSingle()
 
   if (erreurLecture) {
+
     return { success: false, erreur: erreurLecture.message }
   }
 
   if (sessionExistante) {
-    return { success: true, session_id: sessionExistante.id, creee: false ,debut_session : nouvelleSession.debut_session }
+    return { success: true, session_id: sessionExistante.id, creee: false ,debut_session : sessionExistante.debut_session }
   }
 
   const { data: nouvelleSession, error: erreurCreation } = await supabase
@@ -337,3 +340,5 @@ export async function getCiblesRepliesSession({ session_id }) {
   return { cibles }
 }
 // ───────────── FIN AJOUT ─────────────
+
+
