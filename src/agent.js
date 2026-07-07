@@ -750,8 +750,8 @@ export async function traiterMessage({ phone, message , defaultName , id_message
           console.log(`\n
                 =========================================================================================================
                     information sur le message concerne : 
-                    -type : ${resolution.type}
-                    -content : ${msg.content}
+                    -type : ${resolution.message.type}
+                    -content : ${resolution.message.content}
 
 
                     
