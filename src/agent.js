@@ -678,13 +678,13 @@ export async function traiterMessage({ phone, message , defaultName , id_message
           parts.push({ inlineData: { mimeType: fichier.mimeType, data: fichier.base64 } })
           if(msg?.content && msg?.content?.length !== 0){
             //alors il y a une legende sur cette image on l'ajoute au par
-            parts.push({ text: `legence de l'image : ${mgs?.content}` })
+            parts.push({ text: `legence de l'image : ${msg?.content}` })
           }
         }else{
           //C'EST UNE IMAGES QUI A ETE ENVOYER PAR LE LLM PAS DESOIN DE REDONNER L'IMAGES AU LLM.IL AUT JUSQU'E QU'IL SACHE QU'IL A ENVOYER UNE IMAGES ET A QUOI FAISAIT REFERENCE CETTE IMAGES
           parts = [{ text: `[image] le LLM a envoyer une images qui fait reference au produit ayant la 
             la reference : ${msg?.reference_produit}
-            ${(msg?.content?.length !== 0 && msg?.content) ? 'legence de l\'image : ' + mgs?.content : '' }` }]
+            ${(msg?.content?.length !== 0 && msg?.content) ? 'legence de l\'image : ' + msg?.content : '' }` }]
         }
       } else if (msg.type === 'audio') {
         parts = [{ text: `[Le client a envoyé un audio : ${msg.content}]` }]
