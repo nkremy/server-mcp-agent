@@ -395,22 +395,11 @@ async function construireContenuReplique(messageResolu, mcpClient, phone,session
   const { role, type, content, reference_fichier, reference_produit , session_id } = messageResolu
   let sessionConcerne = sessionsContexteLLM.find(item => item.session_id === session_id);
 
-  // if(!sessionConcerne){
-  //   //LA SESSION N'EST PAS ENCORE CONNU DU LLM IL FAUT L'AJOUTER
-  //   const sessionData = await appelOutil(mcpClient, 'getSessionParId', { session_id }, phone)
-  //   sessionData.session_id = session_id;
-  //   sessionsContexteLLM.push({
-  //     session_id ,
-  //     debut_session:sessionData.debut_session,
-  //     fin_session:sessionData.fin_session,
-  //     resume:sessionData.resume,
-  //   })
-  //   sessionConcerne = sessionData;
-  // }
+
 
     if(!sessionConcerne){
       //LA SESSION N'EST PAS ENCORE CONNU DU LLM IL FAUT L'AJOUTER
-      log('INFO', 'REPLAY', `Session ${session_id} inconnue du LLM — récupération via getSessionParId`)
+      // log('INFO', 'REPLAY', `Session ${session_id} inconnue du LLM — récupération via getSessionParId`)
       const sessionData = await appelOutil(mcpClient, 'getSessionParId', { session_id }, phone)
       sessionData.session_id = session_id;
       sessionsContexteLLM.push({
@@ -419,11 +408,11 @@ async function construireContenuReplique(messageResolu, mcpClient, phone,session
         fin_session:sessionData.fin_session,
         resume:sessionData.resume,
       })
-      log('INFO', 'REPLAY', `Session ${session_id} ajoutée — total sessions connues : ${sessionsContexteLLM.length}`)
+      // log('INFO', 'REPLAY', `Session ${session_id} ajoutée — total sessions connues : ${sessionsContexteLLM.length}`)
 
       sessionConcerne = sessionData;
     } else {
-      log('INFO', 'REPLAY', `Session ${session_id} déjà connue du LLM — pas de duplication`)
+      // log('INFO', 'REPLAY', `Session ${session_id} déjà connue du LLM — pas de duplication`)
     }
 
   if (role === 'user' && type === 'text') {
@@ -456,10 +445,10 @@ async function construireContenuReplique(messageResolu, mcpClient, phone,session
       const p = produitData.produits[0]
       return { parts: [{ text: `[SESSION CONCERNE : date debut : ${sessionConcerne.debut_session}][Le client répond à l'image du produit ${p.ref} - ${p.label}, prix: ${p.price_ttc}, description: ${p.description}]` }] }
     }
-    return { parts: [{ text: `[Le client répond à une image de produit envoyée précédemment (référence ${reference_produit}, détails indisponibles)]` }] }
+    return { parts: [{ text: `[SESSION CONCERNE : date debut : ${sessionConcerne.debut_session}][Le client répond à une image de produit envoyée précédemment (référence ${reference_produit}, détails indisponibles)]` }] }
   }
 
-  return { parts: [{ text: `[Le client répond à un message précédent : "${content || ''}"]` }] }
+  return { parts: [{ text: `[SESSION CONCERNE : date debut : ${sessionConcerne.debut_session}][Le client répond à un message précédent : "${content || ''}"]` }] }
 }
 // ───────────── FIN AJOUT ─────────────
 
@@ -685,16 +674,19 @@ export async function traiterMessage({ phone, message , defaultName , id_message
     // }
     // ───────────── FIN AJOUT ─────────────
 // END WARNING . FIN DE LA ZONE A DEMOLIRE
-
-
+    
+    console.log(`[contraction context pour le llm] ================================================================`)
+    console.log(`Debut`)
     // Historique des 15 derniers messages ce la session active uniquement
     for (const msg of historiqueData.messages) {
+      console.log(`[message ${msg.id}] : type ${msg.type}`)
       // Reconstruction selon le type sauvegardé
       let parts 
       if (msg.type === 'image') {
         // parts = [{ text: `[Le client a envoyé une image : ${msg.content}]` }]
         //ICI C'EST UNE IMAGES
         if(msg.role==="user"){
+          console.log(`[message ${msg.id}] : type ${msg.type} c'est une images envoyer par l'utilisateur`)
           parts = []
           //C'EST UNE IMAGES QUI A ETE ENVOYE PAR LE CLIENT . IL FAUT REDONNE L'IMAGE AU LLM 
           //telechargement de l'image depuis le gestionnaire de fichier
@@ -706,11 +698,13 @@ export async function traiterMessage({ phone, message , defaultName , id_message
           }
         }else{
           //C'EST UNE IMAGES QUI A ETE ENVOYER PAR LE LLM PAS DESOIN DE REDONNER L'IMAGES AU LLM.IL AUT JUSQU'E QU'IL SACHE QU'IL A ENVOYER UNE IMAGES ET A QUOI FAISAIT REFERENCE CETTE IMAGES
+          console.log(`[message ${msg.id}] : type ${msg.type} c'est une images envoyer par nous meme`)
           parts = [{ text: `[image] le LLM a envoyer une images qui fait reference au produit ayant la 
             la reference : ${msg?.reference_produit}
             ${(msg?.content?.length !== 0 && msg?.content) ? 'legence de l\'image : ' + msg?.content : '' }` }]
         }
       } else if (msg.type === 'audio') {
+        console.log(`[message ${msg.id}] : type ${msg.type} c'est un au envoyer par l'utilisateur`)
         parts = [{ text: `[Le client a envoyé un audio : ${msg.content}]` }]
       } else {
         parts = [{ text: msg.content }]
@@ -719,58 +713,47 @@ export async function traiterMessage({ phone, message , defaultName , id_message
       let resolution = undefined;
       //determiner si le message sible un autre message et ajouter les informations du message sible au context pour que le llm comprend
       if(msg?.repond_a_id_whatsapp && msg?.repond_a_id_whatsapp?.trim()?.length !== 0 ){
+        console.log(`[message ${msg.id}] : type ${msg.type} c'est une images envoyer par l'utilisateur reply a une autre message ayant id : ${msg?.repond_a_id_whatsapp}`)
         //msg est celui qui REPOND ; il faut d'abord résoudre le message CIBLÉ
-        log('INFO', 'REPLAY', `Message historique répond à ${msg.repond_a_id_whatsapp} — résolution en cours`)
+        // log('INFO', 'REPLAY', `Message historique répond à ${msg.repond_a_id_whatsapp} — résolution en cours`)
         resolution = await appelOutil(mcpClient, 'resoudreMessageReplique', { id_whatsapp: msg.repond_a_id_whatsapp }, phone)
-
+        
         if (resolution.found) {
-          log('INFO', 'REPLAY', `Message cible résolu — session ${resolution.message.session_id}, type ${resolution.message.type}, role ${resolution.message.role}`)
+          console.log(`[message ${msg.id}] reply [message : ${resolution.message.id}] de type ${resolution.message.type} `)
+          // log('INFO', 'REPLAY', `Message cible résolu — session ${resolution.message.session_id}, type ${resolution.message.type}, role ${resolution.message.role}`)
           let result = await construireContenuReplique(resolution.message, mcpClient, phone, sessionsContexteLLM)
           parts.unshift(...result.parts)
-          log('INFO', 'REPLAY', `Contexte replay injecté — sessions connues du LLM : ${sessionsContexteLLM.map(s => s.session_id).join(', ')}`)
+
+          
+
+          
+          // log('INFO', 'REPLAY', `Contexte replay injecté — sessions connues du LLM : ${sessionsContexteLLM.map(s => s.session_id).join(', ')}`)
         } else {
-          log('WARN', 'REPLAY', `Message cible introuvable pour id_whatsapp ${msg.repond_a_id_whatsapp} — replay ignoré`)
+          // log('WARN', 'REPLAY', `Message cible introuvable pour id_whatsapp ${msg.repond_a_id_whatsapp} — replay ignoré`)
         }
       }
+      console.log(`\n\nafficharge du part tel qu'il arrive au llm parts : ${parts.length}`)
 
-      console.log(`
-        \n\t\t
-          =========================================================================================================
-                                          FORME DU PART POUR LE MESSAGE 
-            information sur le message entrant : 
-            -type : ${msg.type}
-            -content : ${msg.content}
-            -reply a un autre message ? ${msg.repond_a_id_whatsapp}
-
-          =========================================================================================================
-        
-        \n\t\t`)
-        if(resolution){
+      for(let item of parts){
+        if(item?.data){
           console.log(`
-                formet complet du message concerne. ${JSON.stringify(resolution)}
+              \n-image : ${item.inlineData.data.substring(0,10)} , mimeType: ${item.inlineData.mimeType}
             `)
-          console.log(`\n
-                =========================================================================================================
-                    information sur le message concerne : 
-                    -type : ${resolution?.message?.type}
-                    -content : ${resolution?.message?.content}
-
-
-                    
-                =========================================================================================================
-                la forme du part pour ce message est : 
-                ${JSON.stringify(parts)}
-
+        }else{
+           console.log(`
+              \n-text : ${item.text} 
             `)
         }
-
-
+      }
 
       contents.push({
         role: msg.role === 'user' ? 'user' : 'model',
         parts 
       })
     }
+
+
+    console.log(`END`)
 
     // Message actuel du client
     // const contenuActuel = construireContenu(message)
