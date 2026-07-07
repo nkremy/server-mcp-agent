@@ -38,7 +38,7 @@ function log(niveau, contexte, message, data = null) {
 // ─────────────────────────────────────────────────────────────
 // SYSTEM PROMPT
 // ─────────────────────────────────────────────────────────────
-let SYSTEM_PROMPT = `
+let SYSTEM_PROMPT_BASE = `
 Tu es exclusivement un assistant commercial WhatsApp pour la boutique  : Tesla kamer.
 Tu réponds UNIQUEMENT aux questions liées aux produits,
 commandes, livraisons et services de cette boutique.
@@ -391,19 +391,36 @@ async function construireContenuReplique(messageResolu, mcpClient, phone,session
   const { role, type, content, reference_fichier, reference_produit , session_id } = messageResolu
   let sessionConcerne = sessionsContexteLLM.find(item => item.session_id === session_id);
 
-  if(!sessionConcerne){
-    //LA SESSION N'EST PAS ENCORE CONNU DU LLM IL FAUT L'AJOUTER
-    const sessionData = await appelOutil(mcpClient, 'getSessionParId', { session_id }, phone)
-    sessionData.session_id = session_id;
-    sessionsContexteLLM.push({
-      session_id ,
-      debut_session:sessionData.debut_session,
-      fin_session:sessionData.fin_session,
-      resume:sessionData.resume,
-    })
+  // if(!sessionConcerne){
+  //   //LA SESSION N'EST PAS ENCORE CONNU DU LLM IL FAUT L'AJOUTER
+  //   const sessionData = await appelOutil(mcpClient, 'getSessionParId', { session_id }, phone)
+  //   sessionData.session_id = session_id;
+  //   sessionsContexteLLM.push({
+  //     session_id ,
+  //     debut_session:sessionData.debut_session,
+  //     fin_session:sessionData.fin_session,
+  //     resume:sessionData.resume,
+  //   })
+  //   sessionConcerne = sessionData;
+  // }
 
-    sessionConcerne = sessionData;
-  }
+    if(!sessionConcerne){
+      //LA SESSION N'EST PAS ENCORE CONNU DU LLM IL FAUT L'AJOUTER
+      log('INFO', 'REPLAY', `Session ${session_id} inconnue du LLM — récupération via getSessionParId`)
+      const sessionData = await appelOutil(mcpClient, 'getSessionParId', { session_id }, phone)
+      sessionData.session_id = session_id;
+      sessionsContexteLLM.push({
+        session_id ,
+        debut_session:sessionData.debut_session,
+        fin_session:sessionData.fin_session,
+        resume:sessionData.resume,
+      })
+      log('INFO', 'REPLAY', `Session ${session_id} ajoutée — total sessions connues : ${sessionsContexteLLM.length}`)
+
+      sessionConcerne = sessionData;
+    } else {
+      log('INFO', 'REPLAY', `Session ${session_id} déjà connue du LLM — pas de duplication`)
+    }
 
   if (role === 'user' && type === 'text') {
     return { parts: [{ text: `[SESSION CONCERNE : date debut : ${sessionConcerne.debut_session}][Le client répond à son propre message : "${content}"]` }] }
@@ -414,7 +431,8 @@ async function construireContenuReplique(messageResolu, mcpClient, phone,session
     if (reference_fichier) {
       const fichier = await retrouverFichierClient({ reference: reference_fichier })
       if (fichier.success) {
-        parts.push({ inlineData: { mimeType: deviverMimeType(reference_fichier), data: fichier.base64 } })
+        // le gestionnaire de fichiers renvoie desormais mimeType directement ; deviverMimeType en repli seulement
+        parts.push({ inlineData: { mimeType: fichier.mimeType || deviverMimeType(reference_fichier), data: fichier.base64 } })
       }
     }
     return { parts }
@@ -479,6 +497,8 @@ async function construireBlocSessionInconnue(session_id, mcpClient, phone) {
 export async function traiterMessage({ phone, message , defaultName , id_message, repond_a_id_whatsapp}) {
   log('INFO', 'AGENT', `=== Début traitement message pour ${phone} ===`)
 
+  let SYSTEM_PROMPT = SYSTEM_PROMPT_BASE;
+
   let mcpClient = null
 
   try {
@@ -487,7 +507,7 @@ export async function traiterMessage({ phone, message , defaultName , id_message
 
     //--- CHARGEMET DES OUTILS -----------------------------------
     let {tools}  = await mcpClient.listTools();
-    let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage','getOuCreerSessionActive','getDernierResumeSession'].includes(item.name));
+    let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage','getOuCreerSessionActive','getDernierResumeSession','getDerniersResumesSessions','getSessionParId','resoudreMessageReplique','getCiblesRepliesSession'].includes(item.name));
     // let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage','getOuCreerSessionActive'].includes(item.name));
     // let utils = tools.filter(item=> !['getHistorique','sauvegarderMessage','resumerHistorique','telechargerImage'].includes(item.name));
     let outils = [{functionDeclarations : convertirOutilsMCPversGemini(utils)}]
@@ -674,7 +694,7 @@ export async function traiterMessage({ phone, message , defaultName , id_message
           parts = []
           //C'EST UNE IMAGES QUI A ETE ENVOYE PAR LE CLIENT . IL FAUT REDONNE L'IMAGE AU LLM 
           //telechargement de l'image depuis le gestionnaire de fichier
-          const fichier = await retrouverFichierClient({ reference: reference_fichier })
+          const fichier = await retrouverFichierClient({ reference: msg.reference_fichier })
           parts.push({ inlineData: { mimeType: fichier.mimeType, data: fichier.base64 } })
           if(msg?.content && msg?.content?.length !== 0){
             //alors il y a une legende sur cette image on l'ajoute au par
@@ -694,9 +714,18 @@ export async function traiterMessage({ phone, message , defaultName , id_message
 
       //determiner si le message sible un autre message et ajouter les informations du message sible au context pour que le llm comprend
       if(msg?.repond_a_id_whatsapp && msg?.repond_a_id_whatsapp?.trim()?.length !== 0 ){
-        //le messable actuel sible un autre message 
-        let result =  await construireContenuReplique(msg,mcpClient,phone,sessionsContexteLLM);
-        parts.unshift(...result.parts);
+        //msg est celui qui REPOND ; il faut d'abord résoudre le message CIBLÉ
+        log('INFO', 'REPLAY', `Message historique répond à ${msg.repond_a_id_whatsapp} — résolution en cours`)
+        const resolution = await appelOutil(mcpClient, 'resoudreMessageReplique', { id_whatsapp: msg.repond_a_id_whatsapp }, phone)
+
+        if (resolution.found) {
+          log('INFO', 'REPLAY', `Message cible résolu — session ${resolution.message.session_id}, type ${resolution.message.type}, role ${resolution.message.role}`)
+          let result = await construireContenuReplique(resolution.message, mcpClient, phone, sessionsContexteLLM)
+          parts.unshift(...result.parts)
+          log('INFO', 'REPLAY', `Contexte replay injecté — sessions connues du LLM : ${sessionsContexteLLM.map(s => s.session_id).join(', ')}`)
+        } else {
+          log('WARN', 'REPLAY', `Message cible introuvable pour id_whatsapp ${msg.repond_a_id_whatsapp} — replay ignoré`)
+        }
       }
 
       contents.push({
@@ -711,11 +740,12 @@ export async function traiterMessage({ phone, message , defaultName , id_message
     // log('INFO', 'AGENT', `Contexte construit — ${contents.length} éléments au total`)
 
     
-    //ajout des sessions dans le system prompt
-    SYSTEM_PROMPT +=`
+    //ajout des sessions dans le system prompt (sur la copie locale, jamais sur la base)
+    systemPromptFinal +=`
                 voici la liste des session important pour bien comprendre
                 ${JSON.stringify(sessionsContexteLLM)}
-    `
+      `
+    log('INFO', 'REPLAY', `Sessions finales injectées dans le system prompt : ${sessionsContexteLLM.map(s => s.session_id).join(', ')}`)
 
     // ── 6. Boucle agent Gemini ────────────────────────────────
     log('INFO', 'GEMINI', `Premier appel Gemini pour ${phone}`)
