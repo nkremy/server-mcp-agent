@@ -26,13 +26,13 @@ const __dirname  = path.dirname(__filename)
 // Logger — préfixe horodaté pour chaque log
 // ─────────────────────────────────────────────────────────────
 function log(niveau, contexte, message, data = null) {
-  const ts = new Date().toISOString()
-  const ligne = `[${ts}] [${niveau}] [${contexte}] ${message}`
-  if (data !== null) {
-    console.error(ligne, typeof data === 'object' ? JSON.stringify(data) : data)
-  } else {
-    console.error(ligne)
-  }
+  // const ts = new Date().toISOString()
+  // const ligne = `[${ts}] [${niveau}] [${contexte}] ${message}`
+  // if (data !== null) {
+  //   console.error(ligne, typeof data === 'object' ? JSON.stringify(data) : data)
+  // } else {
+  //   console.error(ligne)
+  // }
 }
 
 // ─────────────────────────────────────────────────────────────
