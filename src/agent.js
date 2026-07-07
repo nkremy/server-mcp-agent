@@ -741,7 +741,7 @@ export async function traiterMessage({ phone, message , defaultName , id_message
 
     
     //ajout des sessions dans le system prompt (sur la copie locale, jamais sur la base)
-    systemPromptFinal +=`
+    SYSTEM_PROMPT +=`
                 voici la liste des session important pour bien comprendre
                 ${JSON.stringify(sessionsContexteLLM)}
       `
