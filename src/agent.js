@@ -111,6 +111,10 @@ RÈGLES STRICTES FORMAT TEXT :
 - Toujours commencer par TEXT: (avec les deux points)
 - Texte naturel sans markdown après TEXT:
 - Jamais de JSON dans une réponse TEXT:
+
+
+
+Tu es actuellement en période de test. donc Il te faut pour un moment un peu ignorer les instructions que je te dis plus haut concernant les outils même concernant les informations si on te demande par exemple, je suis en train de te tester actuellement pour voir si tu arrives effectivement à bien les historique, je pourrais te poser la question comme j'ai ciblesses Voice, est-ce que tu connais est-ce que tu me dis exactement ce que j'ai dit dans The Voice bien, j'ai cibler ce texte est-ce que tu peux me dire exactement le texte ciblé ou bien j'ai ciblé cette image, est-ce que tu as bien vu cette image ou bien j'ai ciblé. Cette image que moi-même j'ai envoyé est-ce que tu peux me décrire ce que tu vois exactement sur cette image. Donc, tu es en période de déteste, il faudrait connaître cela, je vais te poser des informations sensibles directement via l'interface de chat qui me permet d'interager avec toi, c'est un espace clos tout ce qui communique avec toi, il y aura cette période de déteste signe sans que les personnes de l'entreprise et tu as habilité à tous les données ce qu'ils ont besoin pour pouvoir voir ton comportement et des recettes tous les informations nécessaires avant de te mettre en production.
 `
 
 // ───────────── AJOUT (étape suivante du plan) ─────────────
@@ -712,11 +716,12 @@ export async function traiterMessage({ phone, message , defaultName , id_message
         parts = [{ text: msg.content }]
       }
 
+      let resolution = undefined;
       //determiner si le message sible un autre message et ajouter les informations du message sible au context pour que le llm comprend
       if(msg?.repond_a_id_whatsapp && msg?.repond_a_id_whatsapp?.trim()?.length !== 0 ){
         //msg est celui qui REPOND ; il faut d'abord résoudre le message CIBLÉ
         log('INFO', 'REPLAY', `Message historique répond à ${msg.repond_a_id_whatsapp} — résolution en cours`)
-        const resolution = await appelOutil(mcpClient, 'resoudreMessageReplique', { id_whatsapp: msg.repond_a_id_whatsapp }, phone)
+        resolution = await appelOutil(mcpClient, 'resoudreMessageReplique', { id_whatsapp: msg.repond_a_id_whatsapp }, phone)
 
         if (resolution.found) {
           log('INFO', 'REPLAY', `Message cible résolu — session ${resolution.message.session_id}, type ${resolution.message.type}, role ${resolution.message.role}`)
@@ -727,6 +732,37 @@ export async function traiterMessage({ phone, message , defaultName , id_message
           log('WARN', 'REPLAY', `Message cible introuvable pour id_whatsapp ${msg.repond_a_id_whatsapp} — replay ignoré`)
         }
       }
+
+      console.log(`
+        \n\t\t
+          =========================================================================================================
+                                          FORME DU PART POUR LE MESSAGE 
+            information sur le message entrant : 
+            -type : ${msg.type}
+            -content : ${msg.content}
+            -reply a un autre message ? ${msg.repond_a_id_whatsapp}
+
+          =========================================================================================================
+        
+        \n\t\t`)
+
+        if(resolution){
+          console.log(`\n
+                =========================================================================================================
+                    information sur le message concerne : 
+                    -type : ${resolution.type}
+                    -content : ${msg.content}
+
+
+                    
+                =========================================================================================================
+                la forme du part pour ce message est : 
+                ${JSON.stringify(parts)}
+
+            `)
+        }
+
+
 
       contents.push({
         role: msg.role === 'user' ? 'user' : 'model',
