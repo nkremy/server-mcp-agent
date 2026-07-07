@@ -606,7 +606,7 @@ export async function traiterMessage({ phone, message , defaultName , id_message
       // const sessionsOrdreChronologique = [...derniersResumes.sessions].reverse()
       // On remplit notre accumulateur avec les 3 sessions initiales
       sessionsContexteLLM.push(...derniersResumes.sessions);
-      log('INFO', 'AGENT', `${sessionsOrdreChronologique.length} session(s) précédente(s) injectée(s)`)
+      log('INFO', 'AGENT', `${sessionsContexteLLM.length} session(s) précédente(s) injectée(s)`)
     }
 
     // ───────────── FIN MODIFIÉ ─────────────
