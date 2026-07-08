@@ -96,36 +96,6 @@ function aplatirReponse(reponseTexte) {
 // ───────────── FIN AJOUT ─────────────
 
 
-// ───────────── AJOUT (Flux C, point 6) ─────────────
-// recupererBlocsSessionsInconnues — à CHAQUE tour, rebalaye TOUS les
-// replies déjà faits dans la session actuelle (pas seulement le
-// dernier message), et retourne un bloc par session inconnue trouvée,
-// dédupliqué. Rien n'est stocké de façon permanente : c'est reconstruit
-// intégralement à chaque appel, tant que la session actuelle est en cours.
-// async function recupererBlocsSessionsInconnues(session_id_courante, sessionsConnues, mcpClient, phone) {
-//   const { cibles } = await appelOutil(mcpClient, 'getCiblesRepliesSession', { session_id: session_id_courante }, phone)
-//   if (!cibles || cibles.length === 0) return []
-
-//   const sessionsInconnuesVues = new Set()
-//   const blocs = []
-
-//   for (const idWhatsappCible of cibles) {
-//     const resolution = await appelOutil(mcpClient, 'resoudreMessageReplique', { id_whatsapp: idWhatsappCible }, phone)
-//     if (!resolution.found) continue
-
-//     const classification = classifierSessionCible(resolution.message.session_id, session_id_courante, sessionsConnues)
-//     if (classification.statut !== 'inconnue') continue
-
-//     if (sessionsInconnuesVues.has(resolution.message.session_id)) continue
-//     sessionsInconnuesVues.add(resolution.message.session_id)
-
-//     const bloc = await construireBlocSessionInconnue(resolution.message.session_id, mcpClient, phone)
-//     if (bloc) blocs.push(bloc)
-//   }
-
-//   return blocs
-// }
-// ───────────── FIN AJOUT ─────────────
 
 // ─────────────────────────────────────────────────────────────
 // creerClientMCP — ouvre une connexion stdio vers le serveur MCP
@@ -443,10 +413,13 @@ export async function traiterMessage({ phone, message , defaultName , id_message
       })
     }
 
+
+
     //--- CE TABLEAU REPRESENTE TOUTES LES SESSIONS QUI DOIVENT ETRE CONNUS DU LLM
     // Ce tableau accumulera toutes les sessions (initiales + découvertes via les replies)
     let sessionsContexteLLM = [];
-
+    
+  if(profilData.profil.ia_active){
     // ───────────── AJOUT (étape 3b du plan) ─────────────
     const sessionData = await appelOutil(mcpClient, 'getOuCreerSessionActive', { phone }, phone)
     const session_id = sessionData.session_id
@@ -467,6 +440,8 @@ export async function traiterMessage({ phone, message , defaultName , id_message
                 si lorsque tu utilise l'outil getProfilClient et tu recoi un name=""ou null met le profil ajouter avec le nom par defaut
 
     `
+  }
+
 
 
   //CHARGEMENT IMPORTANT : MAINTENANT , ON SAUVEGARDE LE MESSAGE AVANT DE CHARGE L'HISTRIQUE
@@ -502,8 +477,10 @@ export async function traiterMessage({ phone, message , defaultName , id_message
     log('INFO', 'AGENT', `Message client sauvegardé — nb_messages: ${saveUser.nb_messages}`)
     // ───────────── FIN MODIFIÉ ─────────────
 
+    if(!profilData.profil.ia_active){
+      return { elements: [] };
 
-
+    }
 
     // ── 4. Chargement historique ──────────────────────────────
     log('INFO', 'AGENT', `Chargement historique pour ${phone}`)
@@ -546,55 +523,6 @@ export async function traiterMessage({ phone, message , defaultName , id_message
     // ───────────── FIN MODIFIÉ ─────────────
     // ───────────── FIN MODIFIÉ ─────────────
 
-
-
-    // ───────────── AJOUT (Flux C, point 1) ─────────────
-    // function formatDateFr(iso) {
-    //   return new Date(iso).toLocaleString('fr-FR', {
-    //     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-    //   })
-    // }
-    // ───────────── FIN AJOUT ─────────────
-
-    //XXXXXXXXXXX  WARNING ZONE A DEMOLIRE
-    // ───────────── AJOUT (Flux C, point 8) ─────────────
-    // const sessionsConnues = (derniersResumes.found && derniersResumes.sessions) ? derniersResumes.sessions : []
-    // const blocsInconnuesDejaInjectes = new Set()
-
-    // // 8a. Le message entrant est lui-même un reply
-    // if (repond_a_id_whatsapp) {
-    //   const resolution = await appelOutil(mcpClient, 'resoudreMessageReplique', { id_whatsapp: repond_a_id_whatsapp }, phone)
-
-    //   if (resolution.found) {
-    //     const classification = classifierSessionCible(resolution.message.session_id, session_id, sessionsConnues)
-
-    //     const contenuReplique = await construireContenuReplique(resolution.message, mcpClient, phone,sessionsContexteLLM)
-    //     contents.push({ role: 'user', parts: contenuReplique.parts })
-    //     contents.push({ role: 'model', parts: [{ text: 'Compris, je prends en compte ce contexte.' }] })
-
-    //     if (classification.statut === 'inconnue') {
-    //       const bloc = await construireBlocSessionInconnue(resolution.message.session_id, mcpClient, phone)
-    //       if (bloc) {
-    //         contents.push({ role: 'user', parts: [{ text: bloc }] })
-    //         contents.push({ role: 'model', parts: [{ text: 'Compris, je prends en compte ce contexte.' }] })
-    //         blocsInconnuesDejaInjectes.add(bloc)
-    //       }
-    //     }
-    //   } else {
-    //     log('WARN', 'AGENT', `Reply du message entrant introuvable (id_whatsapp: ${repond_a_id_whatsapp})`)
-    //   }
-    // }
-
-    // 8b. Systématiquement, à chaque tour : rebalayage de TOUS les replies
-    // déjà faits dans la session actuelle, même si le message actuel n'est pas un reply
-    // const blocsSessionsInconnues = await recupererBlocsSessionsInconnues(session_id, sessionsConnues, mcpClient, phone)
-    // for (const bloc of blocsSessionsInconnues) {
-    //   if (blocsInconnuesDejaInjectes.has(bloc)) continue
-    //   contents.push({ role: 'user', parts: [{ text: bloc }] })
-    //   contents.push({ role: 'model', parts: [{ text: 'Compris, je prends en compte ce contexte.' }] })
-    // }
-    // ───────────── FIN AJOUT ─────────────
-// END WARNING . FIN DE LA ZONE A DEMOLIRE
     
     console.log(`[contraction context pour le llm] ================================================================`)
     console.log(`Debut`)
